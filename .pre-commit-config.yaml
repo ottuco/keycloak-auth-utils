@@ -1,0 +1,58 @@
+repos:
+  -   repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.4.0
+      hooks:
+      -   id: trailing-whitespace
+      -   id: end-of-file-fixer
+      -   id: debug-statements
+      -   id: requirements-txt-fixer
+      -   id: check-toml
+      -   id: debug-statements
+      -   id: detect-private-key
+
+  # `flake8` in `pre-commit` has some flaws
+  #
+  # Ref: https://github.com/pre-commit/pre-commit-hooks/issues/112
+  # `pre-commit` won't recognize the `.flake8` file or any config files.
+  # This will lead to writing redundant configs in both files, which is not good, IMHO.
+  # So, we will comment on this config here - But, either the developer
+  # must run the flake8 check his own or must carry out the check during the PR/MR/Push, etc
+  #
+#  -   repo: https://github.com/PyCQA/flake8
+#      rev: 4.0.1
+#      hooks:
+#      -   id: flake8
+#          args: [--config=.flake8]
+#          additional_dependencies: [flake8-typing-imports, flake8-bugbear, flake8-print]
+
+  -   repo: https://github.com/pre-commit/mirrors-autopep8
+      rev: v2.0.2
+      hooks:
+      -   id: autopep8
+
+  -   repo: https://github.com/asottile/add-trailing-comma
+      rev: v2.4.0
+      hooks:
+      -   id: add-trailing-comma
+          args: [--py36-plus]
+
+  -   repo: meta
+      hooks:
+      -   id: check-hooks-apply
+      -   id: check-useless-excludes
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.4.0
+    hooks:
+      - id: pyupgrade
+        args: [--py36-plus]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
