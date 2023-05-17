@@ -38,7 +38,12 @@ class BaseKCAuthBackend:
         self.kc_audience = audience or self.kc_audience
 
     def get_auth_header(self) -> bytes:
-        return self.request.META.get("HTTP_AUTHORIZATION", b"")
+        try:
+            # Django/DRF
+            return self.request.META.get("HTTP_AUTHORIZATION", b"")
+        except AttributeError:
+            # FastAPI
+            return self.request.headers.get("Authorization", b"")
 
     def validate_auth_headers(self) -> typing.Optional[str]:
         headers = self.get_auth_header().split()

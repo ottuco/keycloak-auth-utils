@@ -7,10 +7,10 @@ class KeyCloakBaseError(Exception):
         self.msg = msg
 
     def __str__(self):
-        return self.msg
+        return str(self.msg)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.msg})"
+        return f"{self.__class__.__name__}({self})"
 
 
 class KeycloakError(KeyCloakBaseError):

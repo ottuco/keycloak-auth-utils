@@ -1,6 +1,6 @@
-# from ..manager.django import DjangoKeyManager
-# from .base import BaseTokenVerifier
-#
-#
-# class FastAPITokenVerifier(BaseTokenVerifier):
-#     manager = DjangoKeyManager()
+from ..manager.fastapi import FastAPIKeyManager
+from .base import BaseTokenVerifier
+
+
+class FastAPITokenVerifier(BaseTokenVerifier):
+    manager = FastAPIKeyManager

@@ -18,7 +18,7 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
 
     keyword = "Bearer"
     backend = DRFKeycloakAuthBackend
-    DRFAuthFailed = AuthenticationFailed
+    AuthFailedError: Exception = AuthenticationFailed
 
     def get_or_create_user(self, claims: dict) -> User:
         raise NotImplementedError
@@ -37,7 +37,7 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
             )
             claims = backend.authenticate()
         except self.backend.AuthError as e:
-            raise self.DRFAuthFailed(e.msg)
+            raise self.AuthFailedError(e.msg)
 
         if not claims:
             return None
