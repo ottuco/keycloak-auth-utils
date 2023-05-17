@@ -44,3 +44,8 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://github.com/jerinpetergeorge/keycloak-auth-utils"
+
+[project.optional-dependencies]
+django = ["django>=3.2.0"]
+fastapi = ["fastapi>=0.68.0"]
+all = ["keycloak-utils[django,fastapi]"]
