@@ -1,5 +1,19 @@
 # keycloak auth utils
 
+## Installation
+
+### 1. Django/DRF
+
+```bash
+pip install git+https://github.com/ottuco/keycloak-auth-utils#egg=keycloak-utils[django]
+```
+
+### 2. FastAPI
+
+```bash
+pip install git+https://github.com/ottuco/keycloak-auth-utils#egg=keycloak-utils[fastapi]
+````
+
 ## Usage
 
 ### 1. Django/DRF
