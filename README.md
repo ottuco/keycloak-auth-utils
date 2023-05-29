@@ -5,13 +5,13 @@
 ### 1. Django/DRF
 
 ```bash
-pip install git+https://github.com/ottuco/keycloak-auth-utils#egg=keycloak-utils[django]
+pip install keycloak-utils[django]
 ```
 
 ### 2. FastAPI
 
 ```bash
-pip install git+https://github.com/ottuco/keycloak-auth-utils#egg=keycloak-utils[fastapi]
+pip install keycloak-utils[fastapi]
 ````
 
 ## Usage
@@ -103,4 +103,7 @@ bump2version --dry-run --verbose [major|minor|patch]
 
 # if everything looks good, run the following command to release
 bump2version --verbose [major|minor|patch]
+
+# push the changes to remote
+git push origin master --tags
 ```
