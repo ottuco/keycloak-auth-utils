@@ -9,10 +9,6 @@
 name: Upload Python Package
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   release:
     types: [published]
 
@@ -41,4 +37,4 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
-        repository-url: https://test.pypi.org/legacy/
+        verbose: true
