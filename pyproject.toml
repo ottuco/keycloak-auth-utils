@@ -62,7 +62,7 @@ lint-and-formatting = [
     "isort",
     "pre-commit",
 ]
-dev = ["keycloak-utils[test, lint-and-formatting]"]
+dev = ["keycloak-utils[test, lint-and-formatting]", "bump2version~=1.0.1"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.test_rest_framework.settings"

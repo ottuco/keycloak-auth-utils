@@ -95,3 +95,12 @@ pip install .[test]
 # Run tests
 python -m pytest
 ```
+
+## Release
+```base
+# do a dry-run first -
+bump2version --dry-run --verbose [major|minor|patch]
+
+# if everything looks good, run the following command to release
+bump2version --verbose [major|minor|patch]
+```
