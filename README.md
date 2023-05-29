@@ -86,3 +86,12 @@ def read_root():
     return {"Hello": "World"}
 
 ```
+## Test
+
+```bash
+# Install the dependencies
+pip install .[test]
+
+# Run tests
+python -m pytest
+```
