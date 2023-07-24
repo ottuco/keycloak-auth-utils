@@ -13,6 +13,15 @@ client = TestClient(app)
 
 
 class TestAuthenticationAPI:
+    @mock.patch(get_fresh_key_from_upstream, return_value=constants.PUBLIC_KEY)
+    def test_with_different_auth_scheme(self, mock_):
+        response = client.get(
+            "/",
+            headers={"Authorization": f"Anything {constants.ACCESS_TOKEN}"},
+        )
+        assert response.status_code == 403  # Since user has not been authenticated
+        assert response.json() == {"detail": "Not authenticated"}
+
     def test_without_auth_header(self):
         response = client.get("/")
         assert response.status_code == 403

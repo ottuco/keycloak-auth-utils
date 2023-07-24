@@ -16,7 +16,7 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
     kc_algorithms: list[str]
     kc_audience: str
 
-    keyword = "Bearer"
+    auth_scheme = "Bearer"
     backend = DRFKeycloakAuthBackend
     AuthFailedError: Exception = AuthenticationFailed
 
@@ -34,6 +34,7 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
                 realm=self.kc_realm,
                 algorithms=self.kc_algorithms,
                 audience=self.kc_audience,
+                auth_scheme=self.auth_scheme,
             )
             claims = backend.authenticate()
         except self.backend.AuthError as e:
@@ -46,4 +47,4 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
         return user, None
 
     def authenticate_header(self, request) -> str:
-        return self.keyword
+        return self.auth_scheme

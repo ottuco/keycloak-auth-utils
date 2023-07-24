@@ -19,7 +19,7 @@ class BaseKCAuthBackend:
 
     verifier: typing.Type[BaseTokenVerifier]
     AuthError = KeycloakError
-    token_type = "Bearer"
+    auth_scheme = "Bearer"
 
     def __init__(
         self,
@@ -28,6 +28,7 @@ class BaseKCAuthBackend:
         realm: typing.Optional[str] = None,
         algorithms: typing.Optional[list[str]] = None,
         audience: typing.Optional[str] = None,
+        auth_scheme: typing.Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -36,6 +37,7 @@ class BaseKCAuthBackend:
         self.kc_realm = realm or self.kc_realm
         self.kc_algorithms = algorithms or self.kc_algorithms
         self.kc_audience = audience or self.kc_audience
+        self.auth_scheme = auth_scheme or self.auth_scheme
 
     def get_auth_header(self) -> bytes:
         try:
@@ -59,9 +61,10 @@ class BaseKCAuthBackend:
         token_type, token = headers
         # decode
         token_type, token = _safe_decode(token_type), _safe_decode(token)
-        if token_type.lower() != self.token_type.lower():
-            msg = "Invalid token type. Token type should be Bearer."
-            raise self.AuthError(msg)
+        if token_type.lower() != self.auth_scheme.lower():
+            # The auth scheme must support arbitrary token types,
+            # it could be `Bearer`, `JWT`, `Basic`, `Token` etc.
+            return None
 
         return token
 

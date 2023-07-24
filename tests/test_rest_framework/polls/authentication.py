@@ -10,7 +10,7 @@ class CustomDRFKCAuthentication(BaseDRFKCAuthentication):
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
-    keyword = "Bearer"
+    auth_scheme = "Bearer"
 
     def get_or_create_user(self, claims: dict):
         filter_args = {User.USERNAME_FIELD: claims["email"]}

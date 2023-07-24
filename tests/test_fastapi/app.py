@@ -17,7 +17,7 @@ class AuthenticationMiddleware(BaseFastAPIKCAuthentication):
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
-    keyword = "Bearer"
+    auth_scheme = "Bearer"
 
     def generate_user(self, claims: dict) -> User:
         return User.parse_obj(claims)
