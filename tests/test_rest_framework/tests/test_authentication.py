@@ -20,6 +20,14 @@ def auth():
 
 
 class TestDRFKeycloakAuthBackend:
+    def test_with_different_auth_scheme(self, auth):
+        drf_request = APIRequestFactory().get(
+            "/",
+            headers={"Authorization": f"Anything {constants.ACCESS_TOKEN}"},
+        )
+        user = auth.authenticate(request=drf_request)
+        assert user is None
+
     def test_without_auth_header(self, auth):
         drf_request = APIRequestFactory().get("/", headers={"x-anything": "anything"})
         result = auth.authenticate(request=drf_request)

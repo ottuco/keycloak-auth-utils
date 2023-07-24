@@ -9,6 +9,7 @@ from ..backend.fastapi import FastAPIKeycloakAuthBackend
 
 class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
     backend = FastAPIKeycloakAuthBackend
+    auth_scheme = "Bearer"
 
     def __init__(
         self,
@@ -16,6 +17,7 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
         realm: typing.Optional[str] = None,
         algorithms: typing.Optional[list[str]] = None,
         audience: typing.Optional[str] = None,
+        auth_scheme: typing.Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -24,6 +26,7 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
         self.realm = realm or self.kc_realm
         self.algorithms = algorithms or self.kc_algorithms
         self.audience = audience or self.kc_audience
+        self.auth_scheme = auth_scheme or self.auth_scheme
 
     def authenticate(self, request: Request) -> typing.Optional[dict]:
         backend = self.backend(
@@ -32,6 +35,7 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
             realm=self.realm,
             algorithms=self.algorithms,
             audience=self.audience,
+            auth_scheme=self.auth_scheme,
         )
         return backend.authenticate()
 
