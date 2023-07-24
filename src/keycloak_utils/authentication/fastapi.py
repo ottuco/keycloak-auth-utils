@@ -46,15 +46,23 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
     ) -> Request:
         return request
 
+    def is_already_authenticated(self, request: Request) -> bool:
+        try:
+            return request.state.user.is_authenticated
+        except AttributeError:
+            return False
+
     async def dispatch(
         self,
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        try:
-            claims = self.authenticate(request=request)
-        except self.backend.AuthError as e:
-            return JSONResponse(status_code=401, content={"detail": str(e)})
-        request = self.post_process_claims(claims=claims, request=request)
+        already_authenticated = self.is_already_authenticated(request=request)
+        if not already_authenticated:
+            try:
+                claims = self.authenticate(request=request)
+            except self.backend.AuthError as e:
+                return JSONResponse(status_code=401, content={"detail": str(e)})
+            request = self.post_process_claims(claims=claims, request=request)
         response = await call_next(request)
         return response
