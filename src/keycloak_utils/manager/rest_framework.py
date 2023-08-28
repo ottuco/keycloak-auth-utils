@@ -6,7 +6,11 @@ from .base import BasePublicKeyManager
 
 
 class DjangoKeyManager(BasePublicKeyManager):
-    cache_key = "keycloak_public_key"
+    cache_key_prefix = "keycloak_public_key"
+
+    @property
+    def cache_key(self) -> str:
+        return f"{self.cache_key_prefix}_{self.realm}"
 
     def set_key(self, key: str, *args, **kwargs) -> str:
         cache.set(self.cache_key, key, timeout=self.ttl)

@@ -5,39 +5,29 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from ..backend.fastapi import FastAPIKeycloakAuthBackend
+from ..errors import AuthInterruptedError
 
 
 class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
-    backend = FastAPIKeycloakAuthBackend
-    auth_scheme = "Bearer"
+    backends: typing.List[typing.Type[FastAPIKeycloakAuthBackend]]
 
-    def __init__(
+    def get_backend_context(
         self,
-        host: typing.Optional[str] = None,
-        realm: typing.Optional[str] = None,
-        algorithms: typing.Optional[list[str]] = None,
-        audience: typing.Optional[str] = None,
-        auth_scheme: typing.Optional[str] = None,
-        *args,
+        request: Request,
         **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.host = host or self.kc_host
-        self.realm = realm or self.kc_realm
-        self.algorithms = algorithms or self.kc_algorithms
-        self.audience = audience or self.kc_audience
-        self.auth_scheme = auth_scheme or self.auth_scheme
+    ) -> dict:
+        context = {"request": request, **kwargs}
+        return context
 
     def authenticate(self, request: Request) -> typing.Optional[dict]:
-        backend = self.backend(
-            request=request,
-            host=self.host,
-            realm=self.realm,
-            algorithms=self.algorithms,
-            audience=self.audience,
-            auth_scheme=self.auth_scheme,
-        )
-        return backend.authenticate()
+        for backend in self.backends:
+            context = self.get_backend_context(request=request)
+            try:
+                claims = backend(**context).authenticate()
+            except backend.AuthError as e:
+                raise AuthInterruptedError(msg=str(e.msg))
+            if claims:
+                return claims
 
     def post_process_claims(
         self,
@@ -61,7 +51,7 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
         if not already_authenticated:
             try:
                 claims = self.authenticate(request=request)
-            except self.backend.AuthError as e:
+            except AuthInterruptedError as e:
                 return JSONResponse(status_code=401, content={"detail": str(e)})
             request = self.post_process_claims(claims=claims, request=request)
         response = await call_next(request)

@@ -5,7 +5,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIRequestFactory
 
 from tests import constants
-from tests.test_rest_framework.polls.authentication import CustomDRFKCAuthentication
+from tests.test_rest_framework.polls.authentication import BearerAuthentication
 
 get_fresh_key_from_upstream = (
     "keycloak_utils.manager.base.BasePublicKeyManager.get_fresh_key_from_upstream"
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture()
 def auth():
-    yield CustomDRFKCAuthentication()
+    yield BearerAuthentication()
 
 
 class TestDRFKeycloakAuthBackend:
