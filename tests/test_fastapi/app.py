@@ -20,7 +20,7 @@ class AuthenticationMiddleware(BaseFastAPIKCAuthentication):
     auth_scheme = "Bearer"
 
     def generate_user(self, claims: dict) -> User:
-        return User.model_validate(claims)
+        return User.parse_obj(claims)
 
     def post_process_claims(
         self,
