@@ -51,7 +51,7 @@ class AuthenticationMiddleware(BaseFastAPIKCAuthentication):
     ]
 
     def generate_user(self, claims: dict) -> User:
-        return User.parse_obj(claims)
+        return User.model_validate(claims)
 
     def post_process_claims(
         self,
