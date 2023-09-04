@@ -19,13 +19,23 @@ class KeycloakError(KeyCloakBaseError):
     """
 
 
-class PublicKeyNotFound(KeycloakError):
+class AuthInterruptedError(KeycloakError):
+    """
+    Errors that interrupt the authentication process
+    """
+
+
+class AuthError(AuthInterruptedError):
+    ...
+
+
+class PublicKeyNotFound(AuthError):
     """
     Base class for all Keycloak errors
     """
 
 
-class JWTDecodeError(KeycloakError):
+class JWTDecodeError(AuthError):
     """
     Error while decoding the JWT token
     """

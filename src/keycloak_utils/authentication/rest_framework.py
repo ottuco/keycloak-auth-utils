@@ -23,6 +23,21 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
     def get_or_create_user(self, claims: dict) -> User:
         raise NotImplementedError
 
+    def get_kc_host(self, request: Request) -> str:
+        return self.kc_host
+
+    def get_kc_realm(self, request: Request) -> str:
+        return self.kc_realm
+
+    def get_kc_algorithms(self, request: Request) -> list[str]:
+        return self.kc_algorithms
+
+    def get_kc_audience(self, request: Request) -> str:
+        return self.kc_audience
+
+    def get_auth_scheme(self, request: Request) -> str:
+        return self.auth_scheme
+
     def authenticate(
         self,
         request: Request,
@@ -30,11 +45,11 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
         try:
             backend = self.backend(
                 request,
-                host=self.kc_host,
-                realm=self.kc_realm,
-                algorithms=self.kc_algorithms,
-                audience=self.kc_audience,
-                auth_scheme=self.auth_scheme,
+                host=self.get_kc_host(request),
+                realm=self.get_kc_realm(request),
+                algorithms=self.get_kc_algorithms(request),
+                audience=self.get_kc_audience(request),
+                auth_scheme=self.get_auth_scheme(request),
             )
             claims = backend.authenticate()
         except self.backend.AuthError as e:
