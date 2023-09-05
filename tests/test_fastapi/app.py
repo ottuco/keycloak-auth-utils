@@ -23,22 +23,29 @@ class BearerAuthBackend(_FastAPIKeycloakAuthBackend):
     auth_scheme = "Bearer"
 
 
-class TokenAuthBackend(BearerAuthBackend):
+class TokenAuthBackend(_FastAPIKeycloakAuthBackend):
+    kc_host = "http://localhost:8080"
+    kc_realm = "test"
+    kc_algorithms = ["RS256"]
+    kc_audience = "account"
     auth_scheme = "Token"
 
 
-class RandomAuthBackend(BearerAuthBackend):
+class RandomAuthBackend(_FastAPIKeycloakAuthBackend):
+    kc_host = "http://localhost:8080"
+    kc_realm = "test"
+    kc_algorithms = ["RS256"]
+    kc_audience = "account"
     auth_scheme = "Random"
 
 
-class DynamicAuthBackend(BearerAuthBackend):
+class DynamicAuthBackend(_FastAPIKeycloakAuthBackend):
+    kc_host = "http://localhost:8080"
+    kc_algorithms = ["RS256"]
+    kc_audience = "account"
     auth_scheme = "Dynamic"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.kc_realm = self.get_realm()
-
-    def get_realm(self):
+    def get_kc_realm(self):
         return self.request.headers.get("x-service-id", "default-value")
 
 

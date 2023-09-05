@@ -33,11 +33,55 @@ class BaseKCAuthBackend:
         **kwargs,
     ):
         self.request = request
-        self.kc_host = host or self.kc_host
-        self.kc_realm = realm or self.kc_realm
-        self.kc_algorithms = algorithms or self.kc_algorithms
-        self.kc_audience = audience or self.kc_audience
+        self.kc_host = host or self.get_kc_host()
+        self.kc_realm = realm or self.get_kc_realm()
+        self.kc_algorithms = algorithms or self.get_kc_algorithms()
+        self.kc_audience = audience or self.get_kc_audience()
         self.auth_scheme = auth_scheme or self.auth_scheme
+
+    def get_kc_audience(self) -> str:
+        try:
+            return self.kc_audience
+        except AttributeError:
+            msg = (
+                f"'{self.__class__.__name__}' should either include a "
+                f"`kc_audience` attribute, or override the "
+                f"`get_kc_audience()` method."
+            )
+            raise NotImplementedError(msg)
+
+    def get_kc_algorithms(self) -> list[str]:
+        try:
+            return self.kc_algorithms
+        except AttributeError:
+            msg = (
+                f"'{self.__class__.__name__}' should either include a "
+                f"`kc_algorithms` attribute, or override the "
+                f"`get_kc_algorithms()` method."
+            )
+            raise NotImplementedError(msg)
+
+    def get_kc_host(self) -> str:
+        try:
+            return self.kc_host
+        except AttributeError:
+            msg = (
+                f"'{self.__class__.__name__}' should either include a "
+                f"`kc_host` attribute, or override the "
+                f"`get_kc_host()` method."
+            )
+            raise NotImplementedError(msg)
+
+    def get_kc_realm(self) -> str:
+        try:
+            return self.kc_realm
+        except AttributeError:
+            msg = (
+                f"'{self.__class__.__name__}' should either include a "
+                f"`kc_realm` attribute, or override the "
+                f"`get_kc_realm()` method."
+            )
+            raise NotImplementedError(msg)
 
     def get_auth_header(self) -> bytes:
         try:
