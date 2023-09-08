@@ -53,7 +53,8 @@ all = ["keycloak-utils[django,fastapi]"]
 fastapi-test = ["httpx"]
 test = [
     "keycloak-utils[django,fastapi-test]",
-    "pytest-django~=4.5.2"
+    "pytest-django~=4.5.2",
+    "tox"
 ]
 lint-and-formatting = [
     "black",
