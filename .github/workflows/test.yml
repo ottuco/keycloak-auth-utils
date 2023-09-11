@@ -24,4 +24,4 @@ jobs:
         pip install tox -U
     - name: Run Tests
       run: |
-        tox
+        tox -r
