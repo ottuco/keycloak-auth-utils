@@ -26,7 +26,8 @@ class BasePublicKeyManager:
     def get_fresh_key_from_upstream(self) -> str:
         response = requests.get(self.url_realm)
         if response.status_code != 200:
-            raise PublicKeyNotFound("Keycloak public key not found")
+            msg = f"Public key for Keycloak realm `{self.realm}` not found."
+            raise PublicKeyNotFound(msg)
         return response.json().get("public_key")
 
     def get_fresh_pem_key(self) -> str:
