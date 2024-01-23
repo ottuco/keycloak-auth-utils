@@ -1,6 +1,6 @@
 import typing
 
-from ..errors import AuthError, JWTDecodeError
+from ..errors import AuthInterruptedError, JWTDecodeError
 from ..verifier.base import BaseTokenVerifier
 
 
@@ -18,7 +18,7 @@ class BaseKCAuthBackend:
     kc_audience: str
 
     verifier: typing.Type[BaseTokenVerifier]
-    AuthError = AuthError
+    AuthError = AuthInterruptedError
     auth_scheme = "Bearer"
 
     def __init__(

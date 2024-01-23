@@ -1,6 +1,6 @@
 class KeyCloakBaseError(Exception):
     """
-    Base class for all Keycloak errors
+    Abstract base class for all Keycloak errors
     """
 
     def __init__(self, msg, *args, **kwargs):
@@ -19,23 +19,36 @@ class KeycloakError(KeyCloakBaseError):
     """
 
 
-class AuthInterruptedError(KeycloakError):
+class AuthenticationError(KeycloakError):
     """
+    Errors that are raised while trying to authenticate a request
+    """
+
+
+class AuthSkipError(AuthenticationError):
+    """
+    Errors that are raised while trying to
+    authenticate a request to skip any further authentication.
+
+    This is useful for cases where you want
+    to skip authentication due to missing headers.
+    """
+
+
+class AuthInterruptedError(AuthenticationError):
+    """
+    Base class for all authentication authe
     Errors that interrupt the authentication process
     """
 
 
-class AuthError(AuthInterruptedError):
-    ...
-
-
-class PublicKeyNotFound(AuthError):
+class PublicKeyNotFound(AuthInterruptedError):
     """
     Base class for all Keycloak errors
     """
 
 
-class JWTDecodeError(AuthError):
+class JWTDecodeError(AuthInterruptedError):
     """
     Error while decoding the JWT token
     """

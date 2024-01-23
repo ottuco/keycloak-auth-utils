@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from ..backend.fastapi import FastAPIKeycloakAuthBackend
-from ..errors import AuthInterruptedError
+from ..errors import AuthInterruptedError, AuthSkipError
 
 
 class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
@@ -24,6 +24,9 @@ class BaseFastAPIKCAuthentication(BaseHTTPMiddleware):
             context = self.get_backend_context(request=request)
             try:
                 claims = backend(**context).authenticate()
+            except AuthSkipError:
+                # Skip authentication for this backend
+                continue
             except backend.AuthError as e:
                 raise AuthInterruptedError(msg=str(e.msg))
             if claims:
