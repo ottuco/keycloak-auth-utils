@@ -200,6 +200,27 @@ def read_root():
 
 ```
 
+### 2. Login into Django Using Keycloak SSO.
+Add Following settings in django app settings.py
+```python
+KC_HOST = "https://keycloak.sso.com"
+KC_REALM = "myapp.example.com"
+KC_ALGORITHMS = ["RS256"]
+KC_AUDIENCE = "account"
+AUTH_SCHEME = "Bearer"
+OIDC_RP_CLIENT_ID = "account"
+OIDC_RP_CLIENT_SECRET = "client_secret"
+
+AUTHENTICATION_BACKENDS = (
+    "django.contrib.auth.backends.ModelBackend",
+    "keycloak_utils.contrib.django.auth.AuthenticationBackend"
+)
+```
+Start app server and navigate to login url, It will redirect to SSO login page.
+```
+http://localhost:8000/admin/
+```
+
 
 ## Test
 
