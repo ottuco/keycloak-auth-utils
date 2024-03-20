@@ -34,8 +34,14 @@ urlpatterns = [
         name="admin_logout",
     ),
     path(
-        f"oidc/login", AuthenticateView.as_view(), name=conf.OIDC_AUTHENTICATE_URL_NAME
+        f"oidc/login",
+        AuthenticateView.as_view(),
+        name=conf.KC_UTILS_OIDC_AUTHENTICATE_URL_NAME,
     ),
-    path(f"oidc/callback", CallbackView.as_view(), name=conf.OIDC_CALLBACK_URL_NAME),
-    path(f"oidc/logout", LogoutView.as_view(), name=conf.OIDC_LOGOUT_URL_NAME),
+    path(
+        f"oidc/callback",
+        CallbackView.as_view(),
+        name=conf.KC_UTILS_OIDC_CALLBACK_URL_NAME,
+    ),
+    path(f"oidc/logout", LogoutView.as_view(), name=conf.KC_UTILS_OIDC_LOGOUT_URL_NAME),
 ]

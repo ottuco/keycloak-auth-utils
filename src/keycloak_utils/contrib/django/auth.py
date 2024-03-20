@@ -25,11 +25,11 @@ class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
     def __init__(self, *args, **kwargs) -> None:
         self.UserModel = get_user_model()
         self.request: Optional[HttpRequest] = None
-        self.kc_host: str = conf.KC_HOST
-        self.kc_realm: str = conf.KC_REALM
-        self.kc_algorithms: list[str] = conf.KC_ALGORITHMS
-        self.kc_audience: str = conf.KC_AUDIENCE
-        self.auth_scheme: str = conf.AUTH_SCHEME
+        self.kc_host: str = conf.KC_UTILS_KC_HOST
+        self.kc_realm: str = conf.KC_UTILS_KC_REALM
+        self.kc_algorithms: list[str] = conf.KC_UTILS_KC_ALGORITHMS
+        self.kc_audience: str = conf.KC_UTILS_KC_AUDIENCE
+        self.auth_scheme: str = conf.KC_UTILS_AUTH_SCHEME
         self.manager = DjangoKeyManager
         self.verifier = DjangoTokenVerifier
         super().__init__(request=self.request, *args, **kwargs)
@@ -40,7 +40,7 @@ class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
         first_name: str = claims.get("given_name", "")
         last_name: str = claims.get("family_name", "")
         roles: list[str] = claims.get("realm_access", {}).get("roles", [])
-        is_superuser: bool = conf.USER_SUPERADMIN_ROLE in roles
+        is_superuser: bool = conf.KC_UTILS_USER_SUPERADMIN_ROLE in roles
         is_staff: bool = is_superuser
 
         user, created = self.UserModel.objects.get_or_create(
@@ -70,17 +70,17 @@ class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
 
         params: Dict[str, str] = {
             "grant_type": "authorization_code",
-            "client_id": conf.OIDC_RP_CLIENT_ID,
-            "client_secret": conf.OIDC_RP_CLIENT_SECRET,
+            "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
+            "client_secret": conf.KC_UTILS_OIDC_RP_CLIENT_SECRET,
             "redirect_uri": request.build_absolute_uri(
-                reverse(conf.OIDC_CALLBACK_URL_NAME)
+                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
             ),
             "code": code,
             "code_verifier": code_verifier,
         }
 
         try:
-            resp = request_post(conf.OIDC_TOKEN_URL, data=params)
+            resp = request_post(conf.KC_UTILS_OIDC_TOKEN_URL, data=params)
             resp.raise_for_status()
         except Exception as e:
             log.warning(f"Authentication request failed: {e}")
