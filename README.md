@@ -211,6 +211,8 @@ KC_UTILS_AUTH_SCHEME = "Bearer"
 KC_UTILS_OIDC_RP_CLIENT_ID = "account"
 KC_UTILS_OIDC_RP_CLIENT_SECRET = "client_secret"
 
+ADMIN_URL = "admin"
+
 AUTHENTICATION_BACKENDS = (
     "django.contrib.auth.backends.ModelBackend",
     "keycloak_utils.contrib.django.auth.AuthenticationBackend"
@@ -226,7 +228,7 @@ from django.urls import include, path
 
 urlpatterns = [
     path("", include("keycloak_utils.contrib.django.urls")),
-    path("admin/", admin.site.urls),
+    path(f"{settings.ADMIN_URL}/", admin.site.urls),
 ]
 ```
 
