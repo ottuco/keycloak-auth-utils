@@ -203,13 +203,13 @@ def read_root():
 ### 2. Login into Django Using Keycloak SSO.
 Add following settings in django app settings.py
 ```python
-KC_HOST = "keycloak.sso.com"
-KC_REALM = "myapp.example.com"
-KC_ALGORITHMS = ["RS256"]
-KC_AUDIENCE = "account"
-AUTH_SCHEME = "Bearer"
-OIDC_RP_CLIENT_ID = "account"
-OIDC_RP_CLIENT_SECRET = "client_secret"
+KC_UTILS_KC_HOST = "keycloak.sso.com"
+KC_UTILS_KC_REALM = "myapp.example.com"
+KC_UTILS_KC_ALGORITHMS = ["RS256"]
+KC_UTILS_KC_AUDIENCE = "account"
+KC_UTILS_AUTH_SCHEME = "Bearer"
+KC_UTILS_OIDC_RP_CLIENT_ID = "account"
+KC_UTILS_OIDC_RP_CLIENT_SECRET = "client_secret"
 
 AUTHENTICATION_BACKENDS = (
     "django.contrib.auth.backends.ModelBackend",
@@ -226,7 +226,7 @@ from django.urls import include, path
 
 urlpatterns = [
     path("", include("keycloak_utils.contrib.django.urls")),
-    path(f"{settings.ADMIN_URL}/", admin.site.urls),
+    path("admin/", admin.site.urls),
 ]
 ```
 
