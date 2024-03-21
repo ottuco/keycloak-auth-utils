@@ -11,6 +11,46 @@ def _safe_decode(s: typing.Union[bytes, str]) -> str:
         return s
 
 
+class APIAuthMixin:
+    auth_scheme = "Bearer"
+
+    def __init__(self, *args, auth_scheme: typing.Optional[str] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.auth_scheme = auth_scheme or self.auth_scheme
+
+    def get_auth_header(self) -> bytes:
+        try:
+            # Django/DRF
+            return self.request.META.get("HTTP_AUTHORIZATION", b"")
+        except AttributeError:
+            # FastAPI
+            return self.request.headers.get("Authorization", b"")
+
+    def validate_auth_headers(self) -> typing.Optional[str]:
+        headers = self.get_auth_header().split()
+        if len(headers) == 0:
+            return None
+        elif len(headers) == 1:
+            msg = "Invalid token header. No credentials provided."
+            raise self.AuthError(msg)
+        elif len(headers) > 2:
+            msg = "Invalid token header. Token string should not contain spaces."
+            raise self.AuthError(msg)
+
+        token_type, token = headers
+        # decode
+        token_type, token = _safe_decode(token_type), _safe_decode(token)
+        if token_type.lower() != self.auth_scheme.lower():
+            # The auth scheme must support arbitrary token types,
+            # it could be `Bearer`, `JWT`, `Basic`, `Token` etc.
+            return None
+
+        return token
+
+    def get_access_token(self, *args, **kwargs) -> str:
+        return self.validate_auth_headers()
+
+
 class BaseKCAuthBackend:
     kc_host: str
     kc_realm: str
@@ -19,7 +59,6 @@ class BaseKCAuthBackend:
 
     verifier: typing.Type[BaseTokenVerifier]
     AuthError = AuthInterruptedError
-    auth_scheme = "Bearer"
 
     def __init__(
         self,
@@ -28,7 +67,6 @@ class BaseKCAuthBackend:
         realm: typing.Optional[str] = None,
         algorithms: typing.Optional[list[str]] = None,
         audience: typing.Optional[str] = None,
-        auth_scheme: typing.Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -37,7 +75,6 @@ class BaseKCAuthBackend:
         self.kc_realm = realm or self.get_kc_realm()
         self.kc_algorithms = algorithms or self.get_kc_algorithms()
         self.kc_audience = audience or self.get_kc_audience()
-        self.auth_scheme = auth_scheme or self.auth_scheme
 
     def get_kc_audience(self) -> str:
         try:
@@ -83,35 +120,6 @@ class BaseKCAuthBackend:
             )
             raise NotImplementedError(msg)
 
-    def get_auth_header(self) -> bytes:
-        try:
-            # Django/DRF
-            return self.request.META.get("HTTP_AUTHORIZATION", b"")
-        except AttributeError:
-            # FastAPI
-            return self.request.headers.get("Authorization", b"")
-
-    def validate_auth_headers(self) -> typing.Optional[str]:
-        headers = self.get_auth_header().split()
-        if len(headers) == 0:
-            return None
-        elif len(headers) == 1:
-            msg = "Invalid token header. No credentials provided."
-            raise self.AuthError(msg)
-        elif len(headers) > 2:
-            msg = "Invalid token header. Token string should not contain spaces."
-            raise self.AuthError(msg)
-
-        token_type, token = headers
-        # decode
-        token_type, token = _safe_decode(token_type), _safe_decode(token)
-        if token_type.lower() != self.auth_scheme.lower():
-            # The auth scheme must support arbitrary token types,
-            # it could be `Bearer`, `JWT`, `Basic`, `Token` etc.
-            return None
-
-        return token
-
     def post_authenticate_hooks(self, claims: dict) -> dict:
         """
         This method is called after obtaining the claims from the token.
@@ -132,8 +140,11 @@ class BaseKCAuthBackend:
         except JWTDecodeError as e:
             raise self.AuthError(e)
 
-    def authenticate(self) -> typing.Optional[dict]:
-        token = self.validate_auth_headers()
+    def get_access_token(self, *args, **kwargs) -> str:
+        raise NotImplementedError
+
+    def authenticate(self, *args, **kwargs) -> typing.Optional[dict]:
+        token = self.get_access_token(*args, **kwargs)
         if not token:
             # Could not find token in headers,
             # maybe some other authentication method is used

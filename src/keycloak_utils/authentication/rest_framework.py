@@ -1,16 +1,26 @@
 import typing
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.backends import BaseBackend as DjangoBaseAuth
+from django.http import HttpRequest
 from rest_framework.authentication import BaseAuthentication as DRFBaseAuth
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
 
-from ..backend.rest_framework import DRFKeycloakAuthBackend
+from ..backend.rest_framework import (
+    DjangoKeycloakSSOAuthBackend,
+    DRFKeycloakAuthBackend,
+)
 
 User = get_user_model()
 
 
-class BaseDRFKCAuthentication(DRFBaseAuth):
+class GetOrCreateUserMixin:
+    def get_or_create_user(self, claims: dict) -> User:
+        raise NotImplementedError
+
+
+class BaseDRFKCAuthentication(GetOrCreateUserMixin, DRFBaseAuth):
     kc_host: str
     kc_realm: str
     kc_algorithms: list[str]
@@ -19,9 +29,6 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
     auth_scheme = "Bearer"
     backend = DRFKeycloakAuthBackend
     AuthFailedError: Exception = AuthenticationFailed
-
-    def get_or_create_user(self, claims: dict) -> User:
-        raise NotImplementedError
 
     def get_kc_host(self, request: Request) -> str:
         return self.kc_host
@@ -63,3 +70,43 @@ class BaseDRFKCAuthentication(DRFBaseAuth):
 
     def authenticate_header(self, request) -> str:
         return self.auth_scheme
+
+
+class BaseKCSSODjangoAuthBackend(GetOrCreateUserMixin, DjangoBaseAuth):
+    kc_host: str
+    kc_realm: str
+    kc_algorithms: list[str]
+    kc_audience: str
+
+    backend = DjangoKeycloakSSOAuthBackend
+
+    def authenticate(
+        self,
+        request: HttpRequest,
+        code: typing.Optional[str] = None,
+        code_verifier: typing.Optional[str] = None,
+        *args,
+        **kwargs,
+    ) -> typing.Optional[User]:
+        if not all([request, code, code_verifier]):
+            # `request`, `code` and `code_verifier` are required
+            # They are set as optional to match the signature of the
+            # `authenticate` method in the base class
+            return None
+
+        try:
+            backend = self.backend(
+                request,
+                host=self.kc_host,
+                realm=self.kc_realm,
+                algorithms=self.kc_algorithms,
+                audience=self.kc_audience,
+                auth_code=code,
+                auth_code_verifier=code_verifier,
+            )
+            claims = backend.authenticate()
+        except self.backend.AuthError:
+            return None
+
+        user = self.get_or_create_user(claims=claims)
+        return user

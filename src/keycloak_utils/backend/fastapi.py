@@ -1,6 +1,6 @@
 from ..verifier.fastapi import FastAPITokenVerifier
-from .base import BaseKCAuthBackend
+from .base import APIAuthMixin, BaseKCAuthBackend
 
 
-class FastAPIKeycloakAuthBackend(BaseKCAuthBackend):
+class FastAPIKeycloakAuthBackend(APIAuthMixin, BaseKCAuthBackend):
     verifier = FastAPITokenVerifier
