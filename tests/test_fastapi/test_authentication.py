@@ -84,4 +84,4 @@ class TestAuthenticationAPI:
         assert response.json() == {
             "user": {"email": "john@test.dev", "name": "John Doe"},
         }
-        mock_.assert_called_once_with("http://localhost:8080/auth/realms/foo-realm")
+        mock_.assert_called_once_with("https://localhost:8443/auth/realms/foo-realm")

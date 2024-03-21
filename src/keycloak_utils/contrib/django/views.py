@@ -1,8 +1,7 @@
-from typing import Any, Dict, Optional
+import typing
 import logging
 from base64 import urlsafe_b64encode
 from hashlib import sha256
-from importlib import import_module
 
 from django.contrib import auth
 from django.http import (
@@ -52,7 +51,7 @@ class AuthenticateView(View):
 
         url: str = conf.KC_UTILS_OIDC_AUTHORIZATION_URL
         scopes: list[str] = conf.KC_UTILS_OIDC_RP_SCOPES
-        auth_params: dict[str, Any] = {
+        auth_params: dict[str, typing.Any] = {
             "response_type": "code",
             "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
             "scope": " ".join(scopes),
@@ -88,13 +87,9 @@ class CallbackView(View):
 
     http_method_names = ["get"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.SessionStore = import_module(conf.KC_UTILS_SESSION_ENGINE).SessionStore
-
     def get(self, request: HttpRequest) -> HttpResponse:
-        next_url: Optional[str] = request.session.get("session_next_url")
-        failure_url: Optional[str] = request.session.get("session_fail_url")
+        next_url: str = request.session.get("session_next_url")
+        failure_url: str = request.session.get("session_fail_url")
 
         if not next_url or not failure_url:
             return HttpResponseBadRequest(
@@ -120,59 +115,47 @@ class CallbackView(View):
     def auth_callback(
         self, request: HttpRequest, next_url: str, failure_url: str
     ) -> HttpResponse:
-        url: str = failure_url
-        try:
-            code: str = request.GET["code"]
-            session_challenge: Optional[str] = request.session.pop(
-                "session_challenge", None
-            )
-            if not session_challenge:
-                raise AuthenticationError(
-                    "OIDC callback: challenge not found in session"
-                )
 
-            user = auth.authenticate(
-                request,
-                use_pkce=conf.KC_UTILS_OIDC_USE_PKCE,
-                code=code,
-                code_verifier=session_challenge,
-            )
-            if user and user.is_active:
-                # keep old session items as auth.login will probably flush the session
-                old_session_items: Dict[str, Any] = dict(request.session.items())
-                auth.login(request, user)
-                for key, value in old_session_items.items():
-                    if key not in request.session:
-                        request.session[key] = value
-                url = next_url
-            else:
-                url += f"?{urlencode({'error': 'OIDC authenticate callback, no user error'})}"
-        except Exception as e:
-            log.warning(e)
-            url += f"?{urlencode({'error': str(e)})}"
+        url: str = failure_url
+        code: str = request.GET["code"]
+        session_challenge: str = request.session.pop("session_challenge", None)
+        if not session_challenge:
+            raise AuthenticationError("OIDC callback: challenge not found in session")
+
+        user = auth.authenticate(
+            request,
+            code=code,
+            code_verifier=session_challenge,
+        )
+        if user and user.is_active:
+            # keep old session items as auth.login will probably flush the session
+            old_session_items: dict[str, typing.Any] = dict(request.session.items())
+            auth.login(request, user)
+            for key, value in old_session_items.items():
+                if key not in request.session:
+                    request.session[key] = value
+            url = next_url
+        else:
+            url += f"?{urlencode({'error': 'OIDC authenticate callback error, User not found or User is not active.'})}"
+
         return HttpResponseRedirect(url)
 
     def logout_callback(
         self, request: HttpRequest, next_url: str, failure_url: str
     ) -> HttpResponse:
+
         url: str = failure_url
-        try:
-            state: str = request.GET["state"]
-            session_state: Optional[str] = request.session.get("session_logout_state")
-            if state == session_state:
-                if request.user.is_authenticated:
-                    auth.logout(request)
-                url = next_url
-            else:
-                request.session.pop("session_logout_state", None)
-                request.session.save()
-                url += (
-                    f"?{urlencode({'error': 'OIDC logout callback, bad state error'})}"
-                )
-        except Exception as e:
-            msg = str(e)
-            log.exception(e)
-            url += f"?{urlencode({'error': msg})}"
+        state: str = request.GET["state"]
+        session_state: str = request.session.get("session_logout_state")
+        if state == session_state:
+            if request.user.is_authenticated:
+                auth.logout(request)
+            url = next_url
+        else:
+            request.session.pop("session_logout_state", None)
+            request.session.save()
+            url += f"?{urlencode({'error': 'OIDC logout callback, bad session state error'})}"
+
         return HttpResponseRedirect(url)
 
 
@@ -212,7 +195,7 @@ class LogoutView(View):
         end_session_url: str = conf.KC_UTILS_OIDC_END_SESSION_URL
 
         state: str = get_random_string(conf.KC_UTILS_OIDC_RANDOM_SIZE)
-        logout_params: Dict[str, Any] = {
+        logout_params: dict[str, typing.Any] = {
             "id_token_hint": id_token,
             "post_logout_redirect_uri": request.build_absolute_uri(
                 reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
@@ -241,7 +224,11 @@ class AdminRedirectView(RedirectView):
         )
         fail_url: str = reverse(conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME)
 
-        return f"{oidc_url}?{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME}={next_url}&{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME}={fail_url}"
+        return (
+            f"{oidc_url}?{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME}"
+            f"={next_url}&{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME}"
+            f"={fail_url}"
+        )
 
 
 class DjangoAdminLoginView(AdminRedirectView):
@@ -249,14 +236,17 @@ class DjangoAdminLoginView(AdminRedirectView):
     Custom Django admin login view to redirect to OIDC provider.
     """
 
-    def get_redirect_url(self, *args, **kwargs) -> Optional[str]:
+    def get_redirect_url(self, *args, **kwargs) -> str:
         """
         If user is not authenticated redirect to OIDC provider login else
         check for permissions.
         """
         if self.request.user.is_authenticated:
             if not (self.request.user.is_superuser and self.request.user.is_staff):
-                msg: str = f"You are authenticated as {self.request.user.username}, but are not authorized to access this page."
+                msg: str = (
+                    f"You are authenticated as {self.request.user.username}, "
+                    f"but are not authorized to access this page."
+                    )
                 url: str = reverse(conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME)
                 return f"{url}?error={msg}"
 
@@ -286,3 +276,12 @@ class DjangoAdminLogoutView(AdminRedirectView):
             return logout_url
 
         return super().get_url()
+
+
+class ErrorView(View):
+    """
+    Error view to render errors.
+    """
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return HttpResponse(request.GET.items())

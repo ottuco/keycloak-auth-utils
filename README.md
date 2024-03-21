@@ -27,7 +27,7 @@ User = get_user_model()
 
 
 class KeycloakDRFAuthentication(BaseDRFKCAuthentication):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "your-realm-nae"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -60,7 +60,7 @@ from keycloak_utils.authentication.fastapi import BaseFastAPIKCAuthentication
 from keycloak_utils.backend.fastapi import FastAPIKeycloakAuthBackend
 
 class BearerAuthBackend(FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -95,7 +95,7 @@ def read_root():
 ## Example cURL request
 
 ```bash
-curl --location 'http://localhost:8080/path/to/resource/' \
+curl --location 'https://localhost:8443/path/to/resource/' \
 --header 'Authorization: <AUTH_SCHEME> <JWT_ACCESS_TOKEN>'
 ```
 * Replace the
@@ -117,7 +117,7 @@ User = get_user_model()
 
 
 class KCBearerAuth(BaseDRFKCAuthentication):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "your-realm-nae"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -129,7 +129,7 @@ class KCBearerAuth(BaseDRFKCAuthentication):
         return user_instance
 
 class KCRandomAuth(BaseDRFKCAuthentication):
-    kc_host = "http://localhost:1234" # using a different KeyCloak host
+    kc_host = "localhost:1234" # using a different KeyCloak host
     kc_realm = "realm-2" # using a different realm
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -161,14 +161,14 @@ from keycloak_utils.authentication.fastapi import BaseFastAPIKCAuthentication
 from keycloak_utils.backend.fastapi import FastAPIKeycloakAuthBackend
 
 class BearerAuthBackend(FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
     auth_scheme = "Bearer"
 
 class RandomAuthBackend(FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:1234" # using a different KeyCloak host
+    kc_host = "localhost:1234" # using a different KeyCloak host
     kc_realm = "realm-2" # using a different realm
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -201,9 +201,9 @@ def read_root():
 ```
 
 ### 2. Login into Django Using Keycloak SSO.
-Add Following settings in django app settings.py
+Add following settings in django app settings.py
 ```python
-KC_HOST = "https://keycloak.sso.com"
+KC_HOST = "keycloak.sso.com"
 KC_REALM = "myapp.example.com"
 KC_ALGORITHMS = ["RS256"]
 KC_AUDIENCE = "account"
@@ -216,6 +216,20 @@ AUTHENTICATION_BACKENDS = (
     "keycloak_utils.contrib.django.auth.AuthenticationBackend"
 )
 ```
+
+Add following in urls.py
+```python
+from django.conf import settings
+from django.contrib import admin
+from django.urls import include, path
+
+
+urlpatterns = [
+    path("", include("keycloak_utils.contrib.django.urls")),
+    path(f"{settings.ADMIN_URL}/", admin.site.urls),
+]
+```
+
 Start app server and navigate to login url, It will redirect to SSO login page.
 ```
 http://localhost:8000/admin/

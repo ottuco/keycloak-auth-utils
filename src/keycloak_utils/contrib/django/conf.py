@@ -1,10 +1,9 @@
-from typing import List
-
 from django.conf import settings
+
 
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")
 KC_UTILS_KC_REALM: str = getattr(settings, "KC_UTILS_KC_REALM", "")
-KC_UTILS_KC_ALGORITHMS: List[str] = getattr(
+KC_UTILS_KC_ALGORITHMS: list[str] = getattr(
     settings,
     "KC_UTILS_KC_ALGORITHMS",
     ["RS256"],
@@ -61,14 +60,13 @@ KC_UTILS_OIDC_RP_CLIENT_SECRET: str = getattr(
     "",
 )
 
-KC_UTILS_OIDC_RP_SCOPES: List[str] = getattr(
+KC_UTILS_OIDC_RP_SCOPES: list[str] = getattr(
     settings,
     "KC_UTILS_OIDC_RP_SCOPES",
     ["openid", "email", "profile", "offline_access"],
 )
 KC_UTILS_OIDC_USE_PKCE: bool = getattr(settings, "KC_UTILS_OIDC_USE_PKCE", True)
 KC_UTILS_OIDC_RANDOM_SIZE: int = getattr(settings, "KC_UTILS_OIDC_RANDOM_SIZE", 32)
-KC_UTILS_OIDC_CALLBACK: str = getattr(settings, "KC_UTILS_OIDC_CALLBACK", "callback")
 
 # OIDC url name
 KC_UTILS_OIDC_CALLBACK_URL_NAME: str = getattr(

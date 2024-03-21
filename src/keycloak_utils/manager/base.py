@@ -21,7 +21,7 @@ class BasePublicKeyManager:
 
     @property
     def url_realm(self) -> str:
-        return f"{self.host}/auth/realms/{self.realm}"
+        return f"https://{self.host}/auth/realms/{self.realm}"
 
     def get_fresh_key_from_upstream(self) -> str:
         response = requests.get(self.url_realm)

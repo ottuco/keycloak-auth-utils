@@ -19,6 +19,7 @@ from .views import (
     LogoutView,
     DjangoAdminLoginView,
     DjangoAdminLogoutView,
+    ErrorView,
 )
 
 
@@ -32,6 +33,11 @@ urlpatterns = [
         f"{settings.ADMIN_URL}/logout/",
         DjangoAdminLogoutView.as_view(),
         name="admin_logout",
+    ),
+    path(
+        f"error/",
+        ErrorView.as_view(),
+        name="error",
     ),
     path(
         f"oidc/login",

@@ -2,16 +2,14 @@
 OIDC authentication backends
 """
 
-import logging
-
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 
 from ...authentication.rest_framework import BaseKCSSODjangoAuthBackend
 from ...backend.rest_framework import DjangoKeycloakSSOAuthBackend as SSOAuthBackend
 from . import conf
 
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 
 class KCUtilsSSOBackend(SSOAuthBackend):
@@ -20,7 +18,9 @@ class KCUtilsSSOBackend(SSOAuthBackend):
             "grant_type": "authorization_code",
             "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
             "client_secret": conf.KC_UTILS_OIDC_RP_CLIENT_SECRET,
-            "redirect_uri": conf.KC_UTILS_OIDC_CALLBACK,
+            "redirect_uri": self.request.build_absolute_uri(
+                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
+            ),
             "code": self.auth_code,
             "code_verifier": self.auth_code_verifier,
         }
@@ -54,3 +54,10 @@ class AuthenticationBackend(BaseKCSSODjangoAuthBackend):
             },
         )
         return user
+
+    def get_user(self, user_id):
+        try:
+            user = User.objects.get(pk=user_id)
+            return user
+        except User.DoesNotExist:
+            return None

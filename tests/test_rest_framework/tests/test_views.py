@@ -95,4 +95,4 @@ class TestAuthenticationAPI:
         response = view(drf_request)
         assert response.status_code == 200
         assert response.data["user"] == "john@test.dev"
-        mock_.assert_called_once_with("http://localhost:8080/auth/realms/foo-realm")
+        mock_.assert_called_once_with("https://localhost:8443/auth/realms/foo-realm")

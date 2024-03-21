@@ -16,7 +16,7 @@ class User(BaseModel):
 
 
 class BearerAuthBackend(_FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -24,7 +24,7 @@ class BearerAuthBackend(_FastAPIKeycloakAuthBackend):
 
 
 class TokenAuthBackend(_FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -32,7 +32,7 @@ class TokenAuthBackend(_FastAPIKeycloakAuthBackend):
 
 
 class RandomAuthBackend(_FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_realm = "test"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
@@ -40,7 +40,7 @@ class RandomAuthBackend(_FastAPIKeycloakAuthBackend):
 
 
 class DynamicAuthBackend(_FastAPIKeycloakAuthBackend):
-    kc_host = "http://localhost:8080"
+    kc_host = "localhost:8443"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
     auth_scheme = "Dynamic"
