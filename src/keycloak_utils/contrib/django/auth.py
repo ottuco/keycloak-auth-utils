@@ -3,38 +3,37 @@ OIDC authentication backends
 """
 
 import logging
-from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.backends import ModelBackend
-from django.contrib.auth.models import AbstractBaseUser
-from django.http import HttpRequest
-from django.urls import reverse
-from requests import post as request_post
 
+from ...authentication.rest_framework import BaseKCSSODjangoAuthBackend
+from ...backend.rest_framework import DjangoKeycloakSSOAuthBackend as SSOAuthBackend
 from . import conf
-from ...backend.base import BaseKCAuthBackend
-from ...manager.rest_framework import DjangoKeyManager
-from ...verifier.rest_framework import DjangoTokenVerifier
+
+User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
-log = logging.getLogger(__name__)
+class KCUtilsSSOBackend(SSOAuthBackend):
+    def get_token_request_payload(self) -> dict:
+        return {
+            "grant_type": "authorization_code",
+            "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
+            "client_secret": conf.KC_UTILS_OIDC_RP_CLIENT_SECRET,
+            "redirect_uri": conf.KC_UTILS_OIDC_CALLBACK,
+            "code": self.auth_code,
+            "code_verifier": self.auth_code_verifier,
+        }
 
 
-class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
-    def __init__(self, *args, **kwargs) -> None:
-        self.UserModel = get_user_model()
-        self.request: Optional[HttpRequest] = None
-        self.kc_host: str = conf.KC_UTILS_KC_HOST
-        self.kc_realm: str = conf.KC_UTILS_KC_REALM
-        self.kc_algorithms: list[str] = conf.KC_UTILS_KC_ALGORITHMS
-        self.kc_audience: str = conf.KC_UTILS_KC_AUDIENCE
-        self.auth_scheme: str = conf.KC_UTILS_AUTH_SCHEME
-        self.manager = DjangoKeyManager
-        self.verifier = DjangoTokenVerifier
-        super().__init__(request=self.request, *args, **kwargs)
+class AuthenticationBackend(BaseKCSSODjangoAuthBackend):
+    kc_host = conf.KC_UTILS_KC_HOST
+    kc_realm = conf.KC_UTILS_KC_REALM
+    kc_algorithms = conf.KC_UTILS_KC_ALGORITHMS
+    kc_audience = conf.KC_UTILS_KC_AUDIENCE
+    backend = KCUtilsSSOBackend
 
-    def get_or_create_user(self, claims: Dict[str, Any]) -> AbstractBaseUser:
+    def get_or_create_user(self, claims: dict) -> User:
         email: str = claims.get("email", "")
         username: str = claims.get("preferred_username", "")
         first_name: str = claims.get("given_name", "")
@@ -43,7 +42,7 @@ class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
         is_superuser: bool = conf.KC_UTILS_USER_SUPERADMIN_ROLE in roles
         is_staff: bool = is_superuser
 
-        user, created = self.UserModel.objects.get_or_create(
+        user, _ = User.objects.get_or_create(
             username=username,
             defaults={
                 "email": email,
@@ -54,51 +53,4 @@ class AuthenticationBackend(BaseKCAuthBackend, ModelBackend):
                 "is_active": True,
             },
         )
-        return user
-
-    def authenticate(
-        self,
-        request: HttpRequest,
-        code: str,
-        code_verifier: Optional[str] = None,
-        **kwargs,
-    ) -> Optional[AbstractBaseUser]:
-        """Authenticates users using OpenID Connect Authorization code flow."""
-        if not request or not code or not code_verifier:
-            return None
-        self.request = request
-
-        params: Dict[str, str] = {
-            "grant_type": "authorization_code",
-            "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
-            "client_secret": conf.KC_UTILS_OIDC_RP_CLIENT_SECRET,
-            "redirect_uri": request.build_absolute_uri(
-                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
-            ),
-            "code": code,
-            "code_verifier": code_verifier,
-        }
-
-        try:
-            resp = request_post(conf.KC_UTILS_OIDC_TOKEN_URL, data=params)
-            resp.raise_for_status()
-        except Exception as e:
-            log.warning(f"Authentication request failed: {e}")
-            return None
-
-        result: Dict[str, Any] = resp.json()
-        access_token: str = result.get("access_token", "")
-        id_token: str = result.get("id_token", "")
-
-        try:
-            claims: Dict[str, Any] = self.verify_access_token(access_token)
-            if not claims:
-                return None
-        except Exception as e:
-            log.warning(f"Unable to verify and decode access token: {e}")
-            return None
-
-        user: AbstractBaseUser = self.get_or_create_user(claims)
-        request.session["session_id_token"] = id_token
-        request.session.save()
         return user
