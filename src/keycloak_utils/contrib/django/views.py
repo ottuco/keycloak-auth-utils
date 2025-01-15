@@ -1,5 +1,5 @@
-import typing
 import logging
+import typing
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 
@@ -10,14 +10,13 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseRedirect,
 )
-from django.views.generic import RedirectView, View
 from django.urls import reverse
 from django.utils.crypto import get_random_string
 from django.utils.http import urlencode
+from django.views.generic import RedirectView, View
 
-from . import conf
 from ...errors import AuthenticationError
-
+from . import conf
 
 log = logging.getLogger(__name__)
 
