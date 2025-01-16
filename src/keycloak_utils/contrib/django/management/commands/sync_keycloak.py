@@ -2,7 +2,14 @@ import logging
 
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError
+from keycloak_utils.sync.django.core import (
+    KeycloakBase,
+    KeycloakRole,
+    KeycloakPermission,
+    KeycloakUser,
+)
 
+from keycloak_utils.sync import kc_admin
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
     KC_UTILS_KC_ADMIN_PASSWORD,
@@ -45,6 +52,12 @@ class Command(BaseCommand):
             default=False,
         )
 
+        parser.add_argument(
+            "-delegate-celery",
+            action="store_true",
+            help="Determines if Celery is configured in project to delegate tasks to.",
+            default=False,
+        )
         parser.add_argument(
             "--server-url",
             type=str,
@@ -96,88 +109,116 @@ class Command(BaseCommand):
             help="List of clients to create in the specified realm.",
         )
 
-    desired_models_perms_map = {}
+    CREATE = "add"
+    READ = "view"
+    UPDATE = "change"
+    DELETE = "delete"
+    CRUD_PERMISSIONS = [CREATE, READ, UPDATE, DELETE]
+
+    desired_models_perms_map = {
+        "source.payoutsource": CRUD_PERMISSIONS,
+    }
+    kc_admin_config = {}
+    clients = {}
+    perms = {}
+
+    def _validate_options(self, options): ...
 
     def handle(self, *args, **options):
+        self._validate_options(options)
+        self.perms = (
+            self.desired_models_perms_map if self.desired_models_perms_map else {}
+        )
 
-        clients = {
+        self.clients = {
             "private": options["private_clients"],
             "public": options["public_clients"],
         }
 
-        kc_admin_config = {
+        self.kc_admin_config = {
             "server_url": options["server_url"],
             "username": options["admin_username"],
             "password": options["admin_secret"],
             "client_id": options["admin_id"],
             "user_realm_name": options["admin_realm"],
-            "realm_name": options["realm_name"],
         }
+        handler_routine = (
+            self.async_handle if options["delegate_celery"] else self.sync_handle
+        )
+        handler_routine(options)
 
-        run_keycloak_role = options["migrate_groups"]
-        run_keycloak_user = options["migrate_users"]
-        run_keycloak_permissions = options["migrate_permissions"]
-        run_keycloak_base = options["migrate_base"]
-        from celery import current_app
-
+    def sync_handle(self, options):
         try:
-            logger.info("Running Keycloak Sync routine...")
-
-            # TODO: make this as a chord or a chain with groups instead of .get to block connection
-            if run_keycloak_base:
-                base_sync_result = current_app.send_task(
-                    "keycloak_utils.sync.run_sync_routine_by_class_name",
-                    args=(
-                        kc_admin_config,
-                        "KeycloakBase",
-                        options["realm_name"],
-                        clients,
-                    ),
-                )
-                logger.info("Keycloak Base sync routine is delegated successfully.")
-                base_sync_result.get()  # Await the base init of kc realm
-                logger.info("Keycloak Base sync routine is complete.")
-
-            if run_keycloak_role:
-                current_app.send_task(
-                    "keycloak_utils.sync.run_sync_routine_by_class_name",
-                    args=(
-                        kc_admin_config,
-                        "KeycloakRole",
-                    ),
-                )
-                logger.info("Keycloak Role sync routine is delegated successfully.")
-
-            if run_keycloak_permissions:
-                perms = (
-                    self.desired_models_perms_map
-                    if self.desired_models_perms_map
-                    else {}
-                )
-                current_app.send_task(
-                    "keycloak_utils.sync.run_sync_routine_by_class_name",
-                    args=(
-                        kc_admin_config,
-                        "KeycloakPermission",
-                        perms,
-                    ),
-                    soft_time_limit=1000,
-                )
-                logger.info(
-                    "Keycloak Permission sync routine is delegated successfully."
-                )
-
-            if run_keycloak_user:
-                current_app.send_task(
-                    "keycloak_utils.sync.run_sync_routine_by_class_name",
-                    args=(
-                        kc_admin_config,
-                        "KeycloakUser",
-                    ),
-                )
-                logger.info("Keycloak User sync routine is delegated successfully.")
-
+            kc_admin.initialize(**self.kc_admin_config)
         except KeycloakConnectionError as e:
             logger.error(
-                "unsuccessful connection attempt to server please make sure that keycloak is running on provided url and verify provided credentials"
+                "unsuccessful connection attempt to server please make sure that keycloack is running on provided url and verify provided credentials"
             )
+
+        if options["migrate_base"]:
+            KeycloakBase(options["realm_name"], self.clients).run_routine()
+
+        kc_admin.connection.realm_name = options["realm_name"]
+        remaining_sync_classes = {
+            "migrate_groups": lambda: KeycloakRole().run_routine(),
+            "migrate_users": lambda: KeycloakUser().run_routine(),
+            "migrate_permissions": lambda: KeycloakPermission(self.perms).run_routine(),
+        }
+
+        for option, sync_func in remaining_sync_classes.items():
+            if options.get(option):
+                sync_func()
+
+    def async_handle(self, options):
+        TASK = "keycloak_utils.sync.run_sync_routine_by_class_name"
+        from celery import current_app
+        from celery import chain, chord
+
+        self.kc_admin_config |= {"realm_name": options["realm_name"]}
+        if options["migrate_base"]:
+            # TODO: make this as a chord or a chain with groups instead of .get to block connection
+            base_sync_result = current_app.send_task(
+                TASK,
+                args=(
+                    self.kc_admin_config,
+                    "KeycloakBase",
+                    options["realm_name"],
+                    self.clients,
+                ),
+            )
+            logger.info("Keycloak Base sync routine is delegated successfully.")
+            base_sync_result.get()  # Await the base init of kc realm
+            logger.info("Keycloak Base sync routine is complete.")
+
+        if options["migrate_groups"]:
+            current_app.send_task(
+                TASK,
+                args=(
+                    self.kc_admin_config,
+                    "KeycloakRole",
+                ),
+            )
+            logger.info("Keycloak Role sync routine is delegated successfully.")
+
+        if options["migrate_permissions"]:
+
+            current_app.send_task(
+                TASK,
+                args=(
+                    self.kc_admin_config,
+                    "KeycloakPermission",
+                    self.perms,
+                ),
+                soft_time_limit=1000,
+            )
+            logger.info("Keycloak Permission sync routine is delegated successfully.")
+
+        if options["migrate_users"]:
+            current_app.send_task(
+                TASK,
+                args=(
+                    self.kc_admin_config,
+                    "KeycloakUser",
+                ),
+            )
+            logger.info("Keycloak User sync routine is delegated successfully.")

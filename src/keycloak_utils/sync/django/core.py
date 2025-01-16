@@ -302,17 +302,19 @@ class KeycloakSync:
         return_key=None,
         use_admin=False,
     ):
+
         objects = (
             kc_admin_objs_getter(self.kc_client_id)
             if use_admin
             else kc_admin_objs_getter()
         )
+
         obj = next(
             (obj for obj in objects if obj.get(fetch_key) == obj_value),
             None,
         )
-
-        return obj[return_key] if return_key and obj else obj
+        obj_return = obj[return_key] if return_key else obj
+        return obj_return
 
     @staticmethod
     def _get_permission_model():
@@ -342,19 +344,19 @@ class KeycloakSync:
         :param entity_name: The name of the entity to search for.
         :return: The matching entity if found, otherwise None.
         """
-
         if entity_type not in self.entity_fetchers_map:
             raise ValueError(
                 f"Invalid entity type: {entity_type}. Must be one of {', '.join(self.entity_fetchers_map.keys())}."
             )
         fetcher_func = self.entity_fetchers_map[entity_type]
         key, use_admin = (
-            ("username", False) if entity_name == "user" else ("name", True)
+            ("username", False) if entity_type == "user" else ("name", True)
         )
 
-        return self._get_obj_by_kc_key(
+        obj = self._get_obj_by_kc_key(
             fetcher_func, entity_name, key, use_admin=use_admin
         )
+        return obj
 
     def __create_kc_entity(self, json: Dict, entity_type: str):
         """
@@ -375,7 +377,6 @@ class KeycloakSync:
     def _get_or_create_kc_entity(
         self, json: Dict, entity_type: str, key="name"
     ) -> Optional[Dict]:
-
         entity_name = json[key]
         if (
             entity := self._get_kc_entity_by_name(entity_name, entity_type=entity_type)
@@ -387,7 +388,7 @@ class KeycloakSync:
             logger.info(f"created {entity_type} {entity_name}.")
 
         if isinstance(entity, str):
-            entity = self._get_or_create_kc_entity(json, entity_type)
+            entity = self._get_kc_entity_by_name(entity_name, entity_type=entity_type)
         return entity
 
     @abstractmethod
@@ -657,13 +658,14 @@ class KeycloakUser(KeycloakSync):
         user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
+
         self.add_tz_user_attr(user)
         self.current_user = user["id"]
 
     def add_tz_user_attr(self, user):
         timezone = [
             "Asia/Kuwait"
-        ]  # TODO update based on real tz field and default to this if not available
+        ]  # TODO update based on real tz field and default to th   is if not available
         user |= {"attributes": {"timezone": timezone}}
         kc_admin.update_user(user["id"], user)
 
@@ -826,3 +828,4 @@ class KeycloakBase(KeycloakSync):
         except Exception as e:
             logger.error(f"Error: {e}")
             raise e
+        return True

@@ -23,9 +23,10 @@ def run_sync_routine_by_class_name(config, class_name, *args, framework="django"
         logger.info("Initializing KeycloakAdmin instance...")
         kc_admin.initialize(**config)
         logger.info("KeycloakAdmin initialized successfully.")
-    except Exception as e:
-        logger.error(f"Failed to initialize KeycloakAdmin: {e}")
-        raise e
+    except KeycloakConnectionError:
+        logger.error(
+            f"unsuccessful connection attempt to server please make sure that keycloack is running on provided url and verify provided credentials"
+        )
 
     try:
         class_path = f"keycloak_utils.sync.{framework}.core.{class_name}"
