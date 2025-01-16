@@ -1,8 +1,16 @@
 import logging
 
-from keycloak_utils.contrib.django.conf import settings
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError
+
+from ...conf import (
+    KC_UTILS_KC_ADMIN_ID,
+    KC_UTILS_KC_ADMIN_PASSWORD,
+    KC_UTILS_KC_ADMIN_REALM,
+    KC_UTILS_KC_ADMIN_USER,
+    KC_UTILS_KC_REALM,
+    KC_UTILS_KC_SERVER_URL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,37 +49,37 @@ class Command(BaseCommand):
             "--server-url",
             type=str,
             help="Keycloak server URL (overrides environment variable)",
-            default=settings.KC_UTILS_KC_SERVER_URL,
+            default=KC_UTILS_KC_SERVER_URL,
         )
         parser.add_argument(
             "--admin-username",
             type=str,
             help="Keycloak admin ID (overrides environment variable)",
-            default=settings.KC_UTILS_KC_ADMIN_USER,
+            default=KC_UTILS_KC_ADMIN_USER,
         )
         parser.add_argument(
             "--admin-secret",
             type=str,
             help="Keycloak admin secret (overrides environment variable)",
-            default=settings.KC_UTILS_KC_ADMIN_PASSWORD,
+            default=KC_UTILS_KC_ADMIN_PASSWORD,
         )
         parser.add_argument(
             "--realm-name",
             type=str,
             help="Keycloak realm name (overrides environment variable)",
-            default=settings.KC_UTILS_KC_REALM,
+            default=KC_UTILS_KC_REALM,
         )
         parser.add_argument(
             "--admin-id",
             type=str,
             help="Keycloak realm name (overrides environment variable)",
-            default=settings.KC_UTILS_KC_ADMIN_ID,
+            default=KC_UTILS_KC_ADMIN_ID,
         )
         parser.add_argument(
             "--admin-realm",
             type=str,
             help="Keycloak realm name (overrides environment variable)",
-            default=settings.KC_UTILS_KC_ADMIN_REALM,
+            default=KC_UTILS_KC_ADMIN_REALM,
         )
         parser.add_argument(
             "--public-clients",
