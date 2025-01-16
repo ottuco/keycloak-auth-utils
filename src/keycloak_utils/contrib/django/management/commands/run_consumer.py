@@ -4,7 +4,7 @@ import sys
 
 from django.core.management.base import BaseCommand
 
-from keycloak_utils.consumer.core import KeycloakEventConsumer
+from keycloak_utils.consumer.core import EventConsumer
 
 logger = logging.getLogger("keycloak_event_consumer")
 
@@ -65,7 +65,7 @@ class Command(BaseCommand):
             "general": options["general_sync_queues"],
         }
 
-        consumer = KeycloakEventConsumer()
+        consumer = EventConsumer()
 
         consumer.register_queue(create_queues, queue_status="create")
         consumer.register_queue(sync_queues, queue_status="sync")

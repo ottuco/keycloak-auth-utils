@@ -19,7 +19,7 @@ from ..contrib.django.conf import (
 logger = logging.getLogger(__name__)
 
 
-class KeycloakEventHandler:
+class EventHandler:
     @staticmethod
     def process_message(event_data):
         from .django.strategies import EventTypeStrategyClassFactory
@@ -52,7 +52,7 @@ class KeycloakEventHandler:
         return True
 
 
-class KeycloakEventConsumer(KeycloakEventHandler):
+class EventConsumer(EventHandler):
     def __init__(self):
         self.connection = None
         self.channel = None
@@ -271,4 +271,4 @@ class KeycloakEventConsumer(KeycloakEventHandler):
             logger.error(f"connection error {e}")
 
 
-class KeycloakEventAPI(KeycloakEventHandler): ...
+class EventAPIHandler(EventHandler): ...
