@@ -247,7 +247,6 @@ class KeycloakSync:
                     "standardFlowEnabled": True,
                     "implicitFlowEnabled": False,
                     "directAccessGrantsEnabled": True,
-                    "serviceAccountsEnabled": True,
                     "protocol": "openid-connect",
                     "fullScopeAllowed": True,
                     "authorizationServicesEnabled": True,
@@ -308,12 +307,11 @@ class KeycloakSync:
             if use_admin
             else kc_admin_objs_getter()
         )
-
         obj = next(
             (obj for obj in objects if obj.get(fetch_key) == obj_value),
             None,
         )
-        obj_return = obj[return_key] if return_key else obj
+        obj_return = obj[return_key] if return_key and obj else obj
         return obj_return
 
     @staticmethod
@@ -391,10 +389,6 @@ class KeycloakSync:
             entity = self._get_kc_entity_by_name(entity_name, entity_type=entity_type)
         return entity
 
-    @abstractmethod
-    def _create_generator(self):
-        raise NotImplementedError
-
     def _get_next_object(self):
         """
         Fetch the next permission from the generator.
@@ -404,6 +398,8 @@ class KeycloakSync:
             return next(self._generator)
         except StopIteration:
             return None
+
+    def _create_generator(self): ...
 
     @abstractmethod
     def run_routine(self):
@@ -654,29 +650,31 @@ class KeycloakUser(KeycloakSync):
             yield user
 
     def create_user(self, user):
+        user_tz = getattr(user, "timezone", None)
         json_user = self._jsonify(user, strategy="user")
         user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
 
-        self.add_tz_user_attr(user)
+        self.add_tz_user_attr(user, user_tz)
         self.current_user = user["id"]
 
-    def add_tz_user_attr(self, user):
-        timezone = [
-            "Asia/Kuwait"
-        ]  # TODO update based on real tz field and default to th   is if not available
+    def add_tz_user_attr(self, user, user_tz):
+        timezone = [user_tz] if user_tz else ["Asia/Kuwait"]
         user |= {"attributes": {"timezone": timezone}}
         kc_admin.update_user(user["id"], user)
 
     def _add_superadmin_roles(self):
         admin_roles = ["manage-clients", "query-users", "create-client"]
         realm_manage_client_id = self._get_obj_by_kc_key(
-            kc_admin.get_clients(),
+            kc_admin.get_clients,
             "realm-management",
-            "id",
+            "clientId",
             "id",
         )
+        if not realm_manage_client_id:
+            logger.info("")
+            return
         superadmin_management_roles = [
             kc_admin.get_client_role(realm_manage_client_id, role)
             for role in admin_roles
@@ -691,7 +689,9 @@ class KeycloakUser(KeycloakSync):
         groups = user.groups.all()
         roles = []
         for group in groups:
-            roles.append(kc_admin.get_client_role(self.kc_client_id, group.name))
+            json_role = self._jsonify(group, strategy="role")
+            role = self._get_or_create_kc_entity(json_role, entity_type="role")
+            roles.append(role)
         kc_admin.assign_client_role(self.current_user, self.kc_client_id, roles)
         if user.is_superuser:
             self._add_superadmin_roles()

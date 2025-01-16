@@ -11,6 +11,7 @@ logger = logging.getLogger("keycloak_event_consumer")
 
 class Command(BaseCommand):
     help = "Run the Keycloak event consumer"
+    queues_reg = []
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -49,8 +50,6 @@ class Command(BaseCommand):
             default=[],
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
         )
-
-    queues_reg = []
 
     def handle(self, *args, **options):
         create_queues = {

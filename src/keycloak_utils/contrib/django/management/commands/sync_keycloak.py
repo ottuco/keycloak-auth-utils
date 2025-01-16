@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = "Sync Keycloak roles to Django groups and assign permissions"
+    desired_models_perms_map = {}
+    kc_admin_config = {}
+    clients = {}
+    perms = {}
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -108,19 +112,6 @@ class Command(BaseCommand):
             required=False,
             help="List of clients to create in the specified realm.",
         )
-
-    CREATE = "add"
-    READ = "view"
-    UPDATE = "change"
-    DELETE = "delete"
-    CRUD_PERMISSIONS = [CREATE, READ, UPDATE, DELETE]
-
-    desired_models_perms_map = {
-        "source.payoutsource": CRUD_PERMISSIONS,
-    }
-    kc_admin_config = {}
-    clients = {}
-    perms = {}
 
     def _validate_options(self, options): ...
 
