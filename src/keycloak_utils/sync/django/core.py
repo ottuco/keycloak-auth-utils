@@ -137,7 +137,7 @@ class KeycloakSync:
             return policy_dict
 
         def format_user(self, user) -> Dict[str, Any]:
-            username = user.username
+            username = user.username.lower()
             firstname = user.first_name
             lastname = user.last_name
             email = user.email
@@ -420,35 +420,58 @@ class KeycloakPermission(KeycloakSync):
         """
         super().__post_init__()
 
-        self._validate_models()
+        self._validate_desired_models_perms_map()
 
-    def _validate_models(self):
+    def _validate_desired_models_perms_map(self):
         """
         Ensure that all desired models are valid and associated with permissions.
         """
+        if self.desired_models_perms_map:
+            return
+
         Permission = self._get_permission_model()
-        if not self.desired_models_perms_map:
-            for perm in Permission.objects.all():
-                content_type = perm.content_type
-                perm_key = f"{content_type.app_label}.{content_type.model}"
-                self.desired_models_perms_map[perm_key] = CRUD_PERMISSIONS
-        for model_name in self.desired_models_perms_map.keys():
-            try:
-                app_label, model = model_name.split(".")
-                apps.get_model(app_label, model)
+        for perm in Permission.objects.all():
+            content_type = perm.content_type
+            perm_key = f"{content_type.app_label}.{content_type.model}"
+            base_perm = perm.codename.split("_")[0]
+            if perm_key not in self.desired_models_perms_map:
+                self.desired_models_perms_map[perm_key] = []
+            self.desired_models_perms_map[perm_key].append(base_perm)
 
-            except ValueError:
-                raise ValueError(
-                    f"Model {model_name} string must be in the format 'app_label.ModelName'."
-                )
+    def _is_valid_model(self, model_name: str) -> bool:
+        """
+        Validates if a model exists and has associated permissions.
 
-            except LookupError:
-                raise LookupError(f"Model '{model_name}' could not be found.")
+        Args:
+            model_name: String in format 'app_label.ModelName'
+            Permission: Permission model class
+
+        Returns:
+            bool: True if model is valid and has permissions, False otherwise
+        """
+        Permission = self._get_permission_model()
+        try:
+            app_label, model = model_name.split(".")
+            apps.get_model(app_label, model)
 
             if not Permission.objects.filter(content_type__model=model):
-                raise ValueError(
+                logger.warning(
                     f"Model '{model_name}' does not have associated permissions."
                 )
+                return False
+
+            return True
+
+        except ValueError:
+            logger.warning(
+                f"Value Error: Model {model_name} string must be in the format "
+                "'app_label.ModelName'."
+            )
+            return False
+
+        except LookupError:
+            logger.warning(f"Lookup Error: Model '{model_name}' could not be found.")
+            return False
 
     def _model_registered_perms_generator(self, model_name, django_perms: QuerySet):
         registered_perms = self.desired_models_perms_map[model_name]
@@ -466,19 +489,35 @@ class KeycloakPermission(KeycloakSync):
 
     def _create_generator(self):
         """
-        Internal method to create a generator that fetches the desired permissions for each model.
+        Internal method to create a generator that fetches desired permissions for each model.
+
+        Yields:
+            Permission: Individual permission objects for valid models.
+
+        The generator performs the following steps:
+        1. Validates the model name format and existence
+        2. Checks for associated permissions
+        3. Creates Keycloak resource for valid models
+        4. Yields filtered permissions
         """
         Permission = self._get_permission_model()
-        for model_name in self.desired_models_perms_map.keys():
-            _, model = model_name.split(".")
-            perms = Permission.objects.filter(content_type__model=model)
+
+        for model_name in self.desired_models_perms_map:
+            if not self._is_valid_model(model_name):
+                logger.warning(
+                    f"model {model_name} permissions will not e migrated to keycloak"
+                )
+                continue
+
+            app_label, model = model_name.split(".")
+            permissions = Permission.objects.filter(content_type__model=model)
 
             self.create_kc_resource(model_name)
+            filtered_permissions = self._model_registered_perms_generator(
+                model_name, permissions
+            )
 
-            perms = self._model_registered_perms_generator(model_name, perms)
-
-            for perm in perms:
-                yield perm
+            yield from filtered_permissions
 
     def create_kc_resource(self, model):
         strategy = "resource"
@@ -655,7 +694,7 @@ class KeycloakUser(KeycloakSync):
         user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
-
+        print("the user is", user)
         self.add_tz_user_attr(user, user_tz)
         self.current_user = user["id"]
 
@@ -740,8 +779,8 @@ class KeycloakBase(KeycloakSync):
 
     def create_realm(self):
         json_realm = self._jsonify(self.realm_name, strategy="realm")
-        realm = kc_admin.create_realm(json_realm, skip_exists=True)
-        logger.info(f"created realm {realm} successfully ")
+        kc_admin.create_realm(json_realm, skip_exists=True)
+        logger.info(f"created realm {self.realm_name} successfully ")
 
         def update_up_config():
             up_config = kc_admin.get_realm_upconfig(self.realm_name)

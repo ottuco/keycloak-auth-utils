@@ -112,7 +112,6 @@ class EventStrategy(ABC):
         enabled = user["enabled"]
         roles = user["roles"]
         payout_roles = roles.get(self.ms_name, []) if isinstance(roles, dict) else []
-        # payout_roles += user.get("roles_added", {}).get(self.ms_name, [])
         roles_names = [role["name"] for role in payout_roles]
         return email, username, firstname, lastname, roles_names, enabled
 
@@ -189,7 +188,6 @@ class UserEventStrategy(EventStrategy):
 
 
 class PermissionEventStrategy(EventStrategy):
-
     def _format_camel_case(self, text):
         import re
 
