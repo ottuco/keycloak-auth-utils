@@ -108,7 +108,6 @@ class KeycloakSync:
             formatted_auth_permission = f"{formatted_auth_scope}.perm"
             formatted_auth_perm_desc = formatted_auth_scope_display
             permission_dict = {
-                "id": perm.id,
                 "name": formatted_auth_permission,
                 "description": formatted_auth_perm_desc,
                 "scopes": [
@@ -488,10 +487,22 @@ class KeycloakPermission(KeycloakSync):
             return False
 
     def _model_registered_perms_generator(self, model_name, django_perms: QuerySet):
+        from django.contrib.contenttypes.models import ContentType
+
         registered_perms = self.desired_models_perms_map[model_name]
         query = Q()
+        try:
+            app_label, model_name = model_name.split(".")
+
+            content_type = ContentType.objects.get(
+                app_label=app_label, model=model_name.lower()
+            )
+        except ContentType.DoesNotExist:
+            logger.warning(f"Content type for {model_name} does not exist.")
+            return None
+
         for registered_perm in registered_perms:
-            query |= Q(codename__startswith=registered_perm)
+            query |= Q(content_type=content_type, codename__startswith=registered_perm)
 
         perms = django_perms.filter(query)
         if not perms:
@@ -530,7 +541,7 @@ class KeycloakPermission(KeycloakSync):
             filtered_permissions = self._model_registered_perms_generator(
                 model_name, permissions
             )
-
+            print("the filtered perms are", filtered_permissions)
             yield from filtered_permissions
 
     def create_kc_resource(self, model):
@@ -542,6 +553,7 @@ class KeycloakPermission(KeycloakSync):
 
     def create_kc_scope(self, permission):
         json_scope = self._jsonify(permission, strategy="scope")
+        print("the json scope for perm is", json_scope, "perm is", permission.name)
         scope = self._get_or_create_kc_entity(json_scope, entity_type="scope")
 
         resource = kc_admin.get_client_authz_resource(

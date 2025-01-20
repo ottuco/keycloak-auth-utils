@@ -12,6 +12,8 @@ from keycloak_utils.sync.django.core import (
 )
 
 from keycloak_utils.sync import kc_admin
+
+from keycloak_utils.sync.static import CRUD_PERMISSIONS
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
     KC_UTILS_KC_ADMIN_PASSWORD,
@@ -26,7 +28,9 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = "Sync Keycloak roles to Django groups and assign permissions"
-    desired_models_perms_map = {}
+    desired_models_perms_map = {
+        "admin.logentry": CRUD_PERMISSIONS,
+    }
     kc_admin_config = {}
     clients = {}
     perms = {}
