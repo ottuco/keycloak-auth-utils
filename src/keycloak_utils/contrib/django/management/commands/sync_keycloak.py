@@ -28,9 +28,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = "Sync Keycloak roles to Django groups and assign permissions"
-    desired_models_perms_map = {
-        "admin.logentry": CRUD_PERMISSIONS,
-    }
+    desired_models_perms_map = {}
     kc_admin_config = {}
     clients = {}
     perms = {}
