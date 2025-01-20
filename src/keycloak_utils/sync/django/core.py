@@ -165,7 +165,6 @@ class KeycloakSync:
                 "adminTheme": "ottu-light",
                 "accessTokenLifespan": 900,
                 "attributes": {"attributesEnabled": "true"},
-                "eventsListeners": ["custom-event-listener", "jboss-logging"],
             }
             return realm_dict
 

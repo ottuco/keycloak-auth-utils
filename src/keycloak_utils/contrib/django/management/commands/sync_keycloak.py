@@ -1,7 +1,9 @@
 import logging
+import time
+from contextlib import contextmanager
 
 from django.core.management.base import BaseCommand
-from keycloak import KeycloakConnectionError
+from keycloak import KeycloakConnectionError, KeycloakGetError
 from keycloak_utils.sync.django.core import (
     KeycloakBase,
     KeycloakRole,
@@ -115,6 +117,21 @@ class Command(BaseCommand):
 
     def _validate_options(self, options): ...
 
+    @classmethod
+    @contextmanager
+    def update_event_listeners(cls, realm_name):
+        try:
+            attrs = kc_admin.get_realm(realm_name)
+            attrs |= {"eventsListeners": []}
+            kc_admin.update_realm(realm_name, attrs)
+        except KeycloakGetError:
+            pass
+        finally:
+            yield
+            attrs = kc_admin.get_realm(realm_name)
+            attrs |= {"eventsListeners": ["custom-event-listener", "jboss-logging"]}
+            kc_admin.update_realm(realm_name, attrs)
+
     def handle(self, *args, **options):
         self._validate_options(options)
         self.perms = (
@@ -133,18 +150,21 @@ class Command(BaseCommand):
             "client_id": options["admin_id"],
             "user_realm_name": options["admin_realm"],
         }
-        handler_routine = (
-            self.async_handle if options["delegate_celery"] else self.sync_handle
-        )
-        handler_routine(options)
+
+        with self.update_event_listeners(options["realm_name"]):
+            handler_routine = (
+                self.async_handle if options["delegate_celery"] else self.sync_handle
+            )
+            handler_routine(options)
 
     def sync_handle(self, options):
         try:
             kc_admin.initialize(**self.kc_admin_config)
         except KeycloakConnectionError as e:
             logger.error(
-                "unsuccessful connection attempt to server please make sure that keycloack is running on provided url and verify provided credentials"
+                "unsuccessful connection attempt to server please make sure that keycloak is running on provided url and verify provided credentials"
             )
+        #
 
         if options["migrate_base"]:
             KeycloakBase(options["realm_name"], self.clients).run_routine()
