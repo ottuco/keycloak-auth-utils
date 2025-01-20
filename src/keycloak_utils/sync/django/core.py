@@ -1,6 +1,7 @@
 import logging
 from abc import abstractmethod
 from dataclasses import dataclass, field
+from functools import wraps
 from itertools import chain
 from typing import Any, Dict, Generator, List, Optional, cast
 
@@ -10,7 +11,6 @@ from django.db.models import Q, QuerySet
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from .. import kc_admin
-from ..static import CRUD_PERMISSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ class KeycloakSync:
             formatted_auth_permission = f"{formatted_auth_scope}.perm"
             formatted_auth_perm_desc = formatted_auth_scope_display
             permission_dict = {
+                "id": perm.id,
                 "name": formatted_auth_permission,
                 "description": formatted_auth_perm_desc,
                 "scopes": [
@@ -142,6 +143,7 @@ class KeycloakSync:
             lastname = user.last_name
             email = user.email
             user_dict = {
+                "id": user.id,
                 "username": username,
                 "firstName": firstname,
                 "lastName": lastname,
@@ -405,6 +407,19 @@ class KeycloakSync:
     def run_routine(self):
         raise NotImplementedError
 
+    @classmethod
+    def store_kc_id(cls, func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            instance = args[1]
+            kc_id = func(*args, **kwargs)
+            setattr(instance, "kc_id", kc_id)
+            if hasattr(instance, "save"):
+                instance.save()
+            return kc_id
+
+        return wrapper
+
 
 @dataclass
 class KeycloakPermission(KeycloakSync):
@@ -558,10 +573,14 @@ class KeycloakPermission(KeycloakSync):
 
         self.current_scope_id = scope["id"]
 
+    @KeycloakSync.store_kc_id
     def create_kc_permission(self, permission):
         json_perm = self._jsonify(permission, strategy="permission")
 
-        _ = self._get_or_create_kc_entity(json_perm, entity_type="permission")
+        kc_permission = self._get_or_create_kc_entity(
+            json_perm, entity_type="permission"
+        )
+        return kc_permission["id"]
 
     def run_routine(self):
         while True:
@@ -597,10 +616,12 @@ class KeycloakRole(KeycloakSync):
         for group in groups:
             yield group
 
+    @KeycloakSync.store_kc_id
     def create_role(self, group):
         json_role = self._jsonify(group, strategy="role")
         role = self._get_or_create_kc_entity(json_role, entity_type="role")
         self.current_role = role["id"]
+        return role["id"]
 
     def get_or_create_policy(self, group, role_id=None):
         if role_id:
@@ -688,15 +709,18 @@ class KeycloakUser(KeycloakSync):
         for user in users:
             yield user
 
+    @KeycloakSync.store_kc_id
     def create_user(self, user):
         user_tz = getattr(user, "timezone", None)
         json_user = self._jsonify(user, strategy="user")
-        user = self._get_or_create_kc_entity(
+        kc_user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
-        print("the user is", user)
-        self.add_tz_user_attr(user, user_tz)
-        self.current_user = user["id"]
+        user.kc_id = None
+        user.save()
+        self.add_tz_user_attr(kc_user, user_tz)
+        self.current_user = kc_user["id"]
+        return kc_user["id"]
 
     def add_tz_user_attr(self, user, user_tz):
         timezone = [user_tz] if user_tz else ["Asia/Kuwait"]
