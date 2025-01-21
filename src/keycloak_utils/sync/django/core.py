@@ -729,7 +729,7 @@ class KeycloakUser(KeycloakSync):
         )
         self.add_tz_user_attr(kc_user, user_tz)
         self.current_user = kc_user["id"]
-        return kc_user["id"]
+        return kc_user
 
     def add_tz_user_attr(self, user, user_tz):
         timezone = [user_tz] if user_tz else ["Asia/Kuwait"]
