@@ -115,7 +115,6 @@ class KeycloakSync:
                 ],
                 "type": "scope",
             }
-
             return permission_dict
 
         def format_role(self, group) -> Dict[str, Any]:
@@ -410,11 +409,12 @@ class KeycloakSync:
         @wraps(func)
         def wrapper(*args, **kwargs):
             instance = args[1]
-            kc_id = func(*args, **kwargs)
+            kc_obj = func(*args, **kwargs)
+            kc_id = kc_obj["id"]
             setattr(instance, "kc_id", kc_id)
             if hasattr(instance, "save"):
                 instance.save()
-            return kc_id
+            return kc_obj
 
         return wrapper
 
@@ -541,7 +541,6 @@ class KeycloakPermission(KeycloakSync):
             filtered_permissions = self._model_registered_perms_generator(
                 model_name, permissions
             )
-            print("the filtered perms are", filtered_permissions)
             yield from filtered_permissions
 
     def create_kc_resource(self, model):
@@ -553,45 +552,43 @@ class KeycloakPermission(KeycloakSync):
 
     def create_kc_scope(self, permission):
         json_scope = self._jsonify(permission, strategy="scope")
-        print("the json scope for perm is", json_scope, "perm is", permission.name)
         scope = self._get_or_create_kc_entity(json_scope, entity_type="scope")
+        self.current_scope_id = scope["id"]
+        return scope
 
+    def add_kc_scope_to_resource(self, scope):
         resource = kc_admin.get_client_authz_resource(
             self.kc_client_id, self.current_resource_id
         )
         try:
             resource["scopes"] = resource.get("scopes", [])
-            if not any(
+            if any(
                 resource_scope["name"] == scope["name"]
                 for resource_scope in resource["scopes"]
             ):
-                resource["scopes"].append(scope)
-                kc_admin.update_client_authz_resource(
-                    self.kc_client_id, self.current_resource_id, resource
-                )
-
-                logger.info(
-                    f'added scope {scope["name"]} to resource {resource["name"]}'
-                )
-            else:
                 logger.info(
                     f'scope {scope["name"]} already exists in resource {resource["name"]}'
                 )
+                return
+
+            resource["scopes"].append(scope)
+            kc_admin.update_client_authz_resource(
+                self.kc_client_id, self.current_resource_id, resource
+            )
+
+            logger.info(f'added scope {scope["name"]} to resource {resource["name"]}')
 
         except Exception as e:
             logger.error(f"an error occured while creating authz scope {e}")
             raise e
 
-        self.current_scope_id = scope["id"]
-
     @KeycloakSync.store_kc_id
     def create_kc_permission(self, permission):
         json_perm = self._jsonify(permission, strategy="permission")
-
         kc_permission = self._get_or_create_kc_entity(
             json_perm, entity_type="permission"
         )
-        return kc_permission["id"]
+        return kc_permission
 
     def run_routine(self):
         while True:
@@ -599,16 +596,27 @@ class KeycloakPermission(KeycloakSync):
             if permission is None:
                 break
             try:
-                self.create_kc_scope(permission)
-
-                self.create_kc_permission(permission)
-
+                scope = self.create_kc_scope(permission)
+                self.add_kc_scope_to_resource(scope)
+                # self.create_kc_permission(permission)
             except ValueError as ve:
                 logger.error(f"Skipping invalid permission: {ve}")
                 continue
             except Exception as e:
                 logger.error(f"Error processing permission '{permission}': {e}")
                 raise e
+
+    @classmethod
+    def process_permission(cls, permission):
+        scope = cls.create_kc_scope(permission)
+        if not scope:
+            raise ValueError(f"Failed to create scope for permission: {permission}")
+
+        kc_permission = cls.create_kc_permission(permission)
+        if not kc_permission:
+            raise ValueError(f"Failed to create Keycloak permission for: {permission}")
+
+        return scope, kc_permission
 
 
 @dataclass
@@ -632,7 +640,7 @@ class KeycloakRole(KeycloakSync):
         json_role = self._jsonify(group, strategy="role")
         role = self._get_or_create_kc_entity(json_role, entity_type="role")
         self.current_role = role["id"]
-        return role["id"]
+        return role
 
     def get_or_create_policy(self, group, role_id=None):
         if role_id:
@@ -650,42 +658,34 @@ class KeycloakRole(KeycloakSync):
         kc_admin.delete_client_authz_policy(self.kc_client_id, policy_id)
 
     def add_policies_to_permissions(self, group):
+        kc_perm_obj = KeycloakPermission()
         permissions = group.permissions.all()
-
         for permission in permissions:
-            json_scope = self._jsonify(permission, strategy="scope")
-            scope = self._get_or_create_kc_entity(json_scope, entity_type="scope")
+            scope = kc_perm_obj.create_kc_scope(permission)
+            kc_permission = kc_perm_obj.create_kc_permission(permission)
 
-            self.current_scope_id = scope["id"]
-            json_permission = self._jsonify(permission, strategy="permission")
-            permission = self._get_or_create_kc_entity(
-                json_permission, entity_type="permission"
-            )
+            kc_permission_id = kc_permission.pop("id")
             json_policy = self._jsonify(group, strategy="policy")
             policy = self._get_or_create_kc_entity(json_policy, entity_type="policy")
             permission_policies = (
                 kc_admin.get_client_authz_permission_associated_policies(
-                    self.kc_client_id, permission["id"]
+                    self.kc_client_id, kc_permission_id
                 )
             )
 
-            if all(policy["name"] != p["name"] for p in permission_policies):
-                perm_id = permission.pop("id")
-                permission["scopes"] = json_permission["scopes"]
-                permission_policies.append(policy)
-                permission["policies"] = [
-                    policy["id"] for policy in permission_policies
-                ]
-                kc_admin.update_client_authz_scope_permission(
-                    permission, self.kc_client_id, perm_id
-                )
+            if not all(policy["name"] != p["name"] for p in permission_policies):
                 logger.info(
-                    f'added {policy["name"]} to permission {permission["name"]}'
+                    f'policy {policy["name"]} already exists in permission {kc_permission["name"]}'
                 )
-            else:
-                logger.info(
-                    f'policy {policy["name"]} already exists in permission {permission["name"]}'
-                )
+                continue
+
+            kc_permission["scopes"] = [scope["id"]]
+            permission_policies.append(policy)
+            kc_permission["policies"] = [policy["id"] for policy in permission_policies]
+            kc_admin.update_client_authz_scope_permission(
+                kc_permission, self.kc_client_id, kc_permission_id
+            )
+            logger.info(f'added {policy["name"]} to permission {kc_permission["name"]}')
 
     def run_routine(self):
         while True:

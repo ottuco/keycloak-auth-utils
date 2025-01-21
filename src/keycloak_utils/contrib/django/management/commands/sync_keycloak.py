@@ -1,19 +1,17 @@
 import logging
-import time
 from contextlib import contextmanager
 
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError, KeycloakGetError
+
+from keycloak_utils.sync import kc_admin
 from keycloak_utils.sync.django.core import (
     KeycloakBase,
-    KeycloakRole,
     KeycloakPermission,
+    KeycloakRole,
     KeycloakUser,
 )
 
-from keycloak_utils.sync import kc_admin
-
-from keycloak_utils.sync.static import CRUD_PERMISSIONS
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
     KC_UTILS_KC_ADMIN_PASSWORD,
@@ -184,8 +182,7 @@ class Command(BaseCommand):
 
     def async_handle(self, options):
         TASK = "keycloak_utils.sync.run_sync_routine_by_class_name"
-        from celery import current_app
-        from celery import chain, chord
+        from celery import chain, chord, current_app
 
         self.kc_admin_config |= {"realm_name": options["realm_name"]}
         if options["migrate_base"]:
