@@ -33,19 +33,19 @@ class Command(BaseCommand):
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
         )
         parser.add_argument(
-            "--users-sync-queues",
+            "--users-consume-queues",
             nargs="*",
             default=[],
             help="Space-separated list of user queues (e.g., user_queue1 user_queue2).",
         )
         parser.add_argument(
-            "--payment-sync-queues",
+            "--payment-consume-queues",
             nargs="*",
             default=[],
             help="Space-separated list of payment queues (e.g., payment_queue1 payment_queue2).",
         )
         parser.add_argument(
-            "--general-sync-queues",
+            "--general-consume-queues",
             nargs="*",
             default=[],
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
@@ -58,16 +58,16 @@ class Command(BaseCommand):
             "general": options["general_queues"],
         }
 
-        sync_queues = {
-            "users": options["users_sync_queues"],
-            "payment": options["payment_sync_queues"],
-            "general": options["general_sync_queues"],
+        consume_queues = {
+            "users": options["users_consume_queues"],
+            "payment": options["payment_consume_queues"],
+            "general": options["general_consume_queues"],
         }
 
         consumer = EventConsumer()
 
         consumer.register_queue(create_queues, queue_status="create")
-        consumer.register_queue(sync_queues, queue_status="sync")
+        consumer.register_queue(consume_queues, queue_status="sync")
 
         for queue in self.queues_reg:
             consumer.register_queue(*queue)
