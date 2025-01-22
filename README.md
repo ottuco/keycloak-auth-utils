@@ -285,7 +285,7 @@ These environment variables are required for integrating Keycloak utilities into
 | `KC_UTILS_KC_ADMIN_ID`       | `admin-cli`                  | The admin client ID used for administrative tasks.                                                            |
 | `RABBITMQ_URL`               | ``                           | The RabbitMQ url.                                                                                             |
 | `KC_UTILS_CREATE_QUEUES`     | `{}`                         | The dictionary of queues that needs to be created keys are types, values are lists of queue names.            |
-| `KC_UTILS_SYNC_QUEUES`        | `{}`                         | The dictionary of queues that needs to be created and synced keys are types, values are lists of queue names. |
+| `KC_UTILS_CONSUMER_QUEUES`   | `{}`                         | The dictionary of queues that needs to be created and synced keys are types, values are lists of queue names. |
 
 ### **Why These Settings Are Necessary**
 

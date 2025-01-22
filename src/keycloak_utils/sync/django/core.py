@@ -1,3 +1,4 @@
+import base64
 import logging
 from abc import abstractmethod
 from dataclasses import dataclass, field
@@ -136,18 +137,38 @@ class KeycloakSync:
             return policy_dict
 
         def format_user(self, user) -> Dict[str, Any]:
-            username = user.username.lower()
-            firstname = user.first_name
-            lastname = user.last_name
-            email = user.email
+            def credential_representation_from_hash(hash_, temporary=False):
+                """
+                Convert django password to keycloak supported credentials format
+                """
+                try:
+                    algorithm, hashIterations, salt, hashedSaltedValue = hash_.split(
+                        "$"
+                    )
+                except ValueError:
+                    logger.warning(
+                        f"user {user.username} password is incompatible and is not migrate"
+                    )
+                    return None
+                return {
+                    "type": "password",
+                    "hashedSaltedValue": hashedSaltedValue,
+                    "algorithm": algorithm.replace("_", "-"),
+                    "hashIterations": int(hashIterations),
+                    "salt": base64.b64encode(salt.encode()).decode("ascii").strip(),
+                    "temporary": temporary,
+                    "userLabel": "Password",
+                }
+
             user_dict = {
                 "id": user.id,
-                "username": username,
-                "firstName": firstname,
-                "lastName": lastname,
-                "email": email,
+                "username": user.username.lower(),
+                "firstName": user.first_name,
+                "lastName": user.last_name,
+                "email": user.email,
                 "enabled": user.is_active,
                 "emailVerified": user.is_active,
+                "credentials": credential_representation_from_hash(user.password),
             }
             return user_dict
 
@@ -724,10 +745,12 @@ class KeycloakUser(KeycloakSync):
     def create_user(self, user):
         user_tz = getattr(user, "timezone", None)
         json_user = self._jsonify(user, strategy="user")
+
         kc_user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
         self.add_tz_user_attr(kc_user, user_tz)
+
         self.current_user = kc_user["id"]
         return kc_user
 
