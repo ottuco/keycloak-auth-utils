@@ -150,18 +150,20 @@ class KeycloakSync:
                     )
                 except ValueError:
                     logger.warning(
-                        f"user {user.username} password is incompatible and is not migrate"
+                        f"user {user.username} password is incompatible and is not migrated"
                     )
-                    return None
-                return {
-                    "type": "password",
-                    "hashedSaltedValue": hashedSaltedValue,
-                    "algorithm": algorithm.replace("_", "-"),
-                    "hashIterations": int(hashIterations),
-                    "salt": base64.b64encode(salt.encode()).decode("ascii").strip(),
-                    "temporary": temporary,
-                    "userLabel": "Password",
-                }
+                    return []
+                return [
+                    {
+                        "type": "password",
+                        "hashedSaltedValue": hashedSaltedValue,
+                        "algorithm": algorithm.replace("_", "-"),
+                        "hashIterations": int(hashIterations),
+                        "salt": base64.b64encode(salt.encode()).decode("ascii").strip(),
+                        "temporary": temporary,
+                        "userLabel": "Password",
+                    }
+                ]
 
             user_dict = {
                 "id": user.id,
@@ -733,6 +735,12 @@ class KeycloakRole(KeycloakSync):
 class KeycloakUser(KeycloakSync):
     current_user = None
 
+    def __post_init__(self):
+        super().__post_init__()
+        self.core_client_id = self._get_obj_by_kc_key(
+            kc_admin.get_clients, "core", "clientId", "id"
+        )
+
     def _create_generator(self):
         """
         Internal method to create a generator that fetches Groups.
@@ -781,6 +789,13 @@ class KeycloakUser(KeycloakSync):
         )
         superadmin_realm_role = kc_admin.get_realm_role("super_admin")
         kc_admin.assign_realm_roles(self.current_user, [superadmin_realm_role])
+
+        superadmin_client_role = kc_admin.get_client_role(
+            self.core_client_id, "super_admin"
+        )
+        kc_admin.assign_client_role(
+            self.current_user, self.core_client_id, [superadmin_client_role]
+        )
 
     def assign_user_roles(self, user):
         groups = user.groups.all()
@@ -904,7 +919,7 @@ class KeycloakBase(KeycloakSync):
         self.add_client_scope_to_client(client_id, prefixed_client_name)
         if client_name == "core":
             super_admin_role = {"name": "super_admin", "description": "super_adminRole"}
-            kc_admin.create_client_role(client_id, super_admin_role)
+            kc_admin.create_client_role(client_id, super_admin_role, skip_exists=True)
             logger.info("created super_admin client role for core")
         return client_id
 

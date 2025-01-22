@@ -216,7 +216,9 @@ class UserEventStrategy(EventStrategy):
         user.first_name = firstname
         user.last_name = lastname
         user.is_active = enabled
-        setattr(user, "timezone", timezone)
+
+        if "super_admin" in roles:
+            user.is_superuser = True
 
         user_groups = Group.objects.filter(name__in=roles)
         user.groups.set(user_groups)
