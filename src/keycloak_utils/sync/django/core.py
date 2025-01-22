@@ -899,6 +899,10 @@ class KeycloakBase(KeycloakSync):
         client_scope_id = self.create_client_scope(prefixed_client_name)
         self.create_client_protocol_mapper(client_name, client_scope_id)
         self.add_client_scope_to_client(client_id, prefixed_client_name)
+        if client_name == "core":
+            super_admin_role = {"name": "super_admin", "description": "super_adminRole"}
+            kc_admin.create_client_role(client_id, super_admin_role)
+            logger.info("created super_admin client role for core")
 
     def create_superadmin_role(self):
         role_representation = {
