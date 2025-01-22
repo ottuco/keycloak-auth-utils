@@ -743,19 +743,18 @@ class KeycloakUser(KeycloakSync):
 
     @KeycloakSync.store_kc_id
     def create_user(self, user):
-        user_tz = getattr(user, "timezone", None)
         json_user = self._jsonify(user, strategy="user")
 
         kc_user = self._get_or_create_kc_entity(
             json_user, entity_type="user", key="username"
         )
-        self.add_tz_user_attr(kc_user, user_tz)
+        self.add_tz_user_attr(kc_user, user)
 
         self.current_user = kc_user["id"]
         return kc_user
 
     def add_tz_user_attr(self, user, user_tz):
-        timezone = [user_tz] if user_tz else ["Asia/Kuwait"]
+        timezone = [user_tz] if getattr(user, "timezone", None) else ["Asia/Kuwait"]
         user |= {"attributes": {"timezone": timezone}}
         kc_admin.update_user(user["id"], user)
 

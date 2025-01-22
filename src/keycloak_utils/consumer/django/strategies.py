@@ -113,7 +113,16 @@ class EventStrategy(ABC):
         roles = user["roles"]
         payout_roles = roles.get(self.ms_name, []) if isinstance(roles, dict) else []
         roles_names = [role["name"] for role in payout_roles]
-        return email, username, firstname, lastname, roles_names, enabled
+        timezone = next(
+            (
+                attr["timezone"]
+                for attr in user.get("attributes", [])
+                if isinstance(attr, dict) and "timezone" in attr
+            ),
+            None,
+        )
+
+        return email, username, firstname, lastname, roles_names, enabled, timezone
 
     @abstractmethod
     def _handle_create(self, *args): ...
@@ -163,13 +172,17 @@ class UserEventStrategy(EventStrategy):
     def __init__(self):
         super().__init__()
 
-    def _handle_create(self, email, username, firstname, lastname, roles, enabled):
+    def _handle_create(
+        self, email, username, firstname, lastname, roles, enabled, timezone
+    ):
         user = User.objects.create(
             username=username, first_name=firstname, last_name=lastname, email=email
         )
         logger.info(f"created user {user}")
 
-    def _handle_update(self, email, username, firstname, lastname, roles, enabled):
+    def _handle_update(
+        self, email, username, firstname, lastname, roles, enabled, timezone
+    ):
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
@@ -179,6 +192,7 @@ class UserEventStrategy(EventStrategy):
         user.first_name = firstname
         user.last_name = lastname
         user.is_active = enabled
+        setattr(user, "timezone", timezone)
 
         user_groups = Group.objects.filter(name__in=roles)
         user.groups.set(user_groups)
