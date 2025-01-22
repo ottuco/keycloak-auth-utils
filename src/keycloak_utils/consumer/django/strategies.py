@@ -121,8 +121,17 @@ class EventStrategy(ABC):
             ),
             None,
         )
-
-        return email, username, firstname, lastname, roles_names, enabled, timezone
+        kc_id = user["user_id"]
+        return (
+            email,
+            username,
+            firstname,
+            lastname,
+            roles_names,
+            enabled,
+            timezone,
+            kc_id,
+        )
 
     @abstractmethod
     def _handle_create(self, *args): ...
@@ -174,21 +183,35 @@ class UserEventStrategy(EventStrategy):
         super().__init__()
 
     def _handle_create(
-        self, email, username, firstname, lastname, roles, enabled, timezone
+        self, email, username, firstname, lastname, roles, enabled, timezone, kc_id
     ):
         user = User.objects.create(
-            username=username, first_name=firstname, last_name=lastname, email=email
+            username=username,
+            first_name=firstname,
+            last_name=lastname,
+            email=email,
+            kc_id=kc_id,
         )
         logger.info(f"created user {user}")
 
     def _handle_update(
-        self, email, username, firstname, lastname, roles, enabled, timezone
+        self, email, username, firstname, lastname, roles, enabled, timezone, kc_id
     ):
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            logger.info(f"user {username} does not exist")
+        user = None
+        for field, value in [("username", username), ("kc_id", kc_id)]:
+            try:
+                user = User.objects.get(**{field: value})
+                break
+            except User.DoesNotExist:
+                logger.info(f"User not found by {field}: '{value}'")
+                continue
+
+        if not user:
+            logger.error(
+                f"User with username '{username}' and kc_id '{kc_id}' does not exist."
+            )
             return
+
         user.username = username
         user.first_name = firstname
         user.last_name = lastname
