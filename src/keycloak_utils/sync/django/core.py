@@ -22,9 +22,12 @@ class KeycloakSync:
             kc_admin.get_clients, KC_UTILS_KC_CLIENT_ID, "clientId", "id"
         )
         if not self.kc_client_id:
-            raise ValueError(
-                f"Keycloak client ID ('{KC_UTILS_KC_CLIENT_ID}') not found in current realm"
+            logger.info(
+                f"KC_UTILS_KC_CLIENT_ID does not exist in current realm, creating..."
             )
+            self.kc_client_id = KeycloakBase(
+                kc_admin.connection.realm_name
+            ).create_client(KC_UTILS_KC_CLIENT_ID, "private")
         self._generator = self._create_generator()
         self.formatter = self._Formatter(self)
         self.entity_fetchers_map = {
@@ -810,7 +813,7 @@ class KeycloakUser(KeycloakSync):
 @dataclass
 class KeycloakBase(KeycloakSync):
     realm_name: str
-    clients: dict
+    clients: Dict[str, List] = field(default_factory=dict)
 
     def __post_init__(self):
         self.formatter = self._Formatter(self)
@@ -903,6 +906,7 @@ class KeycloakBase(KeycloakSync):
             super_admin_role = {"name": "super_admin", "description": "super_adminRole"}
             kc_admin.create_client_role(client_id, super_admin_role)
             logger.info("created super_admin client role for core")
+        return client_id
 
     def create_superadmin_role(self):
         role_representation = {
