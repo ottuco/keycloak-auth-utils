@@ -606,19 +606,19 @@ class Command(BaseCommand):
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
         )
         parser.add_argument(
-            "--users-sync-queues",
+            "--users-consumer-queues",
             nargs="*",
             default=[],
             help="Space-separated list of user queues (e.g., user_queue1 user_queue2).",
         )
         parser.add_argument(
-            "--payment-sync-queues",
+            "--payment-consumer-queues",
             nargs="*",
             default=[],
             help="Space-separated list of payment queues (e.g., payment_queue1 payment_queue2).",
         )
         parser.add_argument(
-            "--general-sync-queues",
+            "--general-consumer-queues",
             nargs="*",
             default=[],
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
@@ -633,16 +633,16 @@ class Command(BaseCommand):
             "general": options["general_queues"],
         }
 
-        sync_queues = {
-            "users": options["users_sync_queues"],
-            "payment": options["payment_sync_queues"],
-            "general": options["general_sync_queues"],
+        consumer_queues = {
+            "users": options["users_consumer_queues"],
+            "payment": options["payment_consumer_queues"],
+            "general": options["general_consumer_queues"],
         }
 
         consumer = KeycloakEventConsumer()
 
         consumer.register_queue(create_queues, queue_status="create")
-        consumer.register_queue(sync_queues, queue_status="sync")
+        consumer.register_queue(consumer_queues, queue_status="sync")
 
         for queue in self.queues_reg:
             consumer.register_queue(*queue)
@@ -663,7 +663,7 @@ class Command(BaseCommand):
 ```
 #### **queue registration examples**
 ##### a. override queue_reg in consumer class
-first val is name second is routing key third is create or sync
+first val is name second is routing key third is create or consume
 ```python    
 queues_reg = [
     ("users.queuereg_ottu_dev", "eventbus.users.queuereg_ottu_dev", "create"),
@@ -695,9 +695,9 @@ for create queues
 ```bash    
 python manage.py run_consumer --general-queues testdemo --payment-queues paymenttestdemo --user-queues userstestdemo testdemo              
 ```
-for consumer sync queues add sync to the option eg:
+for consumer queues add consumer to the option eg:
 ```bash    
-python manage.py run_consumer --user-sync-queues userstestdemo testdemo              
+python manage.py run_consumer --user-consumer-queues userstestdemo testdemo              
 ```
 
 #### **example command:**
