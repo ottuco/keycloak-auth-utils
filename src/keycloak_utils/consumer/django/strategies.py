@@ -152,6 +152,7 @@ class RoleEventStrategy(EventStrategy):
     def _handle_create(self, group_name, role_id):
         try:
             group = Group.objects.create(name=group_name)
+            logger.info(f"created group {group}")
             # self.kc_role.get_or_create_policy(group, role_id)
         except Exception as e:
             logger.error(f"Error creating group {group_name}: {e}")
@@ -159,11 +160,11 @@ class RoleEventStrategy(EventStrategy):
     def _handle_update(self): ...
 
     def _handle_delete(self, group_name, *args):
-        logger.info(f"the role to delete is {group_name}")
         try:
             group = Group.objects.get(name=group_name)
             # self.kc_role.delete_policy(group)
             group.delete()
+            logger.info(f"group {group_name} deleted")
         except Exception as e:
             logger.error(f"Error deleting group {group_name}: {e}")
 
@@ -197,6 +198,7 @@ class UserEventStrategy(EventStrategy):
         user_groups = Group.objects.filter(name__in=roles)
         user.groups.set(user_groups)
         user.save()
+        logger.info(f"user {username} updated")
 
     def _handle_delete(self, *args): ...
 
@@ -226,7 +228,6 @@ class PermissionEventStrategy(EventStrategy):
             model_name = self._format_camel_case(content_type.model_class().__name__)
             action = permission_codename.split("_")[0]
             permission_name = f"Can {action} {model_name}"
-
         except ContentType.DoesNotExist:
             logger.warning(
                 f"no content type match {permission_app} and {permission_model}... breaking"
@@ -243,7 +244,9 @@ class PermissionEventStrategy(EventStrategy):
         if created:
             permission.name = permission_name
             permission.save()
-
+            logger.info(f"permission {permission_name} created")
+        else:
+            logger.info(f"permission {permission_name} already exists")
         self._update_groups_perms(permission, groups_names)
 
     def _handle_update(
@@ -312,7 +315,7 @@ class BaseEventStrategyFactory:
 
     def handle_event_type(self, event_type):
         logger.info(
-            f"the event_type in the factory {self.__class__.__name__} is {event_type}"
+            f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!"
         )
         if event_type not in self.event_map.keys():
             raise KeyError(f'the event_type "{event_type}" is not registered')

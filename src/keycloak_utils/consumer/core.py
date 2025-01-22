@@ -24,6 +24,7 @@ class EventHandler:
     def process_message(event_data):
         from .django.strategies import EventTypeStrategyClassFactory
 
+        logger.info(f"the received event data is {event_data}")
         base_event_strategy = event_data["event_type"].split("_")[0]
         operation_type = (
             event_data.get("data", {}).get("operation_type", "").split(".")[0]
