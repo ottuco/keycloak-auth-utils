@@ -25,7 +25,7 @@ class KeycloakSync:
         )
         if not self.kc_client_id:
             logger.info(
-                f"KC_UTILS_KC_CLIENT_ID does not exist in current realm, creating..."
+                f"{KC_UTILS_KC_CLIENT_ID} client does not exist in current realm, creating..."
             )
             self.kc_client_id = KeycloakBase(
                 kc_admin.connection.realm_name

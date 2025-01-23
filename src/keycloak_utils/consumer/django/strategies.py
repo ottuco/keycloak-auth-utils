@@ -7,7 +7,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 
-from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+from ... import kc_admin
+from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
 
 logger = logging.getLogger("keycloak_event_consumer")
 User = get_user_model()
@@ -102,6 +103,12 @@ class EventStrategy(ABC):
         return group_name, role_id
 
     def _get_user_info(self, event_data: Dict) -> Optional[Tuple]:
+        kc_admin.connection.realm_name = KC_UTILS_KC_REALM
+        clients = kc_admin.get_clients()
+        if not any(
+            client.get("clientId") == KC_UTILS_KC_CLIENT_ID for client in clients
+        ):
+            return
         user = event_data["operation_information"]
         payout_roles = (
             user["roles"].get(self.ms_name, [])
