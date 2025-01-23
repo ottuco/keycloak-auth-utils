@@ -4,16 +4,18 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from functools import wraps
 from itertools import chain
-from typing import Any, Dict, Generator, List, Optional, cast
+from typing import Any, Callable, Dict, Generator, List, Optional, cast
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
 from django.db.models import Q, QuerySet
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from .. import kc_admin
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class KeycloakSync:
@@ -80,7 +82,7 @@ class KeycloakSync:
             }
             return resource_dict
 
-        def format_scope(self, perm) -> Dict[str, Any]:
+        def format_scope(self, perm: Permission) -> Dict[str, Any]:
             """
             Returns a JSON structured Scope as (name, display_name).
             """
@@ -101,7 +103,7 @@ class KeycloakSync:
             }
             return scope_dict
 
-        def format_permission(self, perm, set_scope: bool = True) -> Dict[str, Any]:
+        def format_permission(self, perm: Permission) -> Dict[str, Any]:
             """
             Returns a JSON structured Permission as (name, description, scopes).
             """
@@ -121,13 +123,13 @@ class KeycloakSync:
             }
             return permission_dict
 
-        def format_role(self, group) -> Dict[str, Any]:
+        def format_role(self, group: Group) -> Dict[str, Any]:
             name = group.name
             description = f"{name}Role"
             role_dict = {"name": name, "description": description}
             return role_dict
 
-        def format_policy(self, group) -> Dict[str, Any]:
+        def format_policy(self, group: Group) -> Dict[str, Any]:
             self.outer_instance: KeycloakRole
             name = f"{group.name}Policy"
             description = f"{name}Policy"
@@ -139,8 +141,10 @@ class KeycloakSync:
             }
             return policy_dict
 
-        def format_user(self, user) -> Dict[str, Any]:
-            def credential_representation_from_hash(hash_, temporary=False):
+        def format_user(self, user: User) -> Dict[str, Any]:
+            def credential_representation_from_hash(
+                hash_: str, temporary: bool = False
+            ) -> List:
                 """
                 Convert django password to keycloak supported credentials format
                 """
@@ -177,7 +181,7 @@ class KeycloakSync:
             }
             return user_dict
 
-        def format_realm(self, realm_name):
+        def format_realm(self, realm_name: str) -> Dict[str, Any]:
             realm_dict = {
                 "id": realm_name,
                 "realm": realm_name,
@@ -192,7 +196,7 @@ class KeycloakSync:
             }
             return realm_dict
 
-        def format_protocol_mapper(self, client_name):
+        def format_protocol_mapper(self, client_name: str) -> Dict[str, Any]:
             audience_mapper_dict = {
                 "name": client_name,
                 "protocol": "openid-connect",
@@ -229,11 +233,11 @@ class KeycloakSync:
             }
             return mapper_creators
 
-        def format_client_scope(self, client_scope):
+        def format_client_scope(self, client_scope_name: str) -> Dict[str, Any]:
             client_scope_dict = {
-                "name": client_scope,
-                "description": client_scope,
-                "type": "none" if client_scope != "timezone" else "default",
+                "name": client_scope_name,
+                "description": client_scope_name,
+                "type": "none" if client_scope_name != "timezone" else "default",
                 "protocol": "openid-connect",
                 "attributes": {
                     "display.on.consent.screen": "true",
@@ -244,7 +248,7 @@ class KeycloakSync:
             }
             return client_scope_dict
 
-        def format_client(self, client_data):
+        def format_client(self, client_data: List[str]) -> Dict[str, Any]:
             self.outer_instance: KeycloakBase
             client_name, client_type = client_data
             base_payload = {
@@ -262,11 +266,11 @@ class KeycloakSync:
                 },
             }
 
-            def public_client_payload(payload):
+            def public_client_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
                 payload |= {"publicClient": True}
                 return payload
 
-            def private_client_payload(payload):
+            def private_client_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
                 payload |= {
                     "publicClient": False,
                     "standardFlowEnabled": True,
@@ -291,7 +295,7 @@ class KeycloakSync:
 
             return client_type_mapper[client_type](base_payload)
 
-    def _jsonify(self, _object=None, strategy=None):
+    def _jsonify(self, _object=None, strategy=None) -> Dict[str, Any]:
         """
         Convert the formatted permission into a JSON-friendly dictionary.
         """
@@ -320,12 +324,12 @@ class KeycloakSync:
 
     def _get_obj_by_kc_key(
         self,
-        kc_admin_objs_getter,
-        obj_value,
-        fetch_key,
-        return_key=None,
-        use_admin=False,
-    ):
+        kc_admin_objs_getter: Callable[[Optional[str]], List[Dict[str, Any]]],
+        obj_value: Any,
+        fetch_key: str,
+        return_key: Optional[str] = None,
+        use_admin: bool = False,
+    ) -> Optional[Any]:
 
         objects = (
             kc_admin_objs_getter(self.kc_client_id)
@@ -336,26 +340,7 @@ class KeycloakSync:
             (obj for obj in objects if obj.get(fetch_key) == obj_value),
             None,
         )
-        obj_return = obj[return_key] if return_key and obj else obj
-        return obj_return
-
-    @staticmethod
-    def _get_permission_model():
-        """
-        Lazily retrieve the Permission model to avoid import errors.
-        """
-        from django.contrib.auth.models import Permission
-
-        return Permission
-
-    @staticmethod
-    def _get_group_model():
-        """
-        Lazily retrieve the Permission model to avoid import errors.
-        """
-        from django.contrib.auth.models import Group
-
-        return Group
+        return obj[return_key] if return_key and obj else obj
 
     def _get_kc_entity_by_name(
         self, entity_name: str, entity_type: str
@@ -381,7 +366,7 @@ class KeycloakSync:
         )
         return obj
 
-    def __create_kc_entity(self, json: Dict, entity_type: str):
+    def __create_kc_entity(self, json: Dict, entity_type: str) -> Optional[Dict]:
         """
         Create an authorization entity (resource, scope, or permission) in Keycloak.
 
@@ -414,7 +399,7 @@ class KeycloakSync:
             entity = self._get_kc_entity_by_name(entity_name, entity_type=entity_type)
         return entity
 
-    def _get_next_object(self):
+    def _get_next_object(self) -> Optional[Permission | Group | User]:
         """
         Fetch the next permission from the generator.
         Returns None if no more permissions are available.
@@ -424,16 +409,16 @@ class KeycloakSync:
         except StopIteration:
             return None
 
-    def _create_generator(self): ...
+    def _create_generator(self) -> Generator[Permission, None, None]: ...
 
     @abstractmethod
-    def run_routine(self):
+    def run_routine(self) -> None:
         raise NotImplementedError
 
     @classmethod
-    def store_kc_id(cls, func):
+    def store_kc_id(cls, func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> object:
             instance = args[1]
             kc_obj = func(*args, **kwargs)
             kc_id = kc_obj["id"]
@@ -449,8 +434,8 @@ class KeycloakSync:
 class KeycloakPermission(KeycloakSync):
     desired_models_perms_map: Dict[str, List] = field(default_factory=dict)
     _permission_generator: Generator[object, None, None] = field(init=False, repr=False)
-    current_resource_id = None
-    current_scope_id = None
+    current_resource_id: str = None
+    current_scope_id: str = None
 
     def __post_init__(self):
         """
@@ -461,14 +446,13 @@ class KeycloakPermission(KeycloakSync):
 
         self._validate_desired_models_perms_map()
 
-    def _validate_desired_models_perms_map(self):
+    def _validate_desired_models_perms_map(self) -> None:
         """
         Ensure that all desired models are valid and associated with permissions.
         """
         if self.desired_models_perms_map:
             return
 
-        Permission = self._get_permission_model()
         for perm in Permission.objects.all():
             content_type = perm.content_type
             perm_key = f"{content_type.app_label}.{content_type.model}"
@@ -483,12 +467,11 @@ class KeycloakPermission(KeycloakSync):
 
         Args:
             model_name: String in format 'app_label.ModelName'
-            Permission: Permission model class
 
         Returns:
             bool: True if model is valid and has permissions, False otherwise
         """
-        Permission = self._get_permission_model()
+
         try:
             app_label, model = model_name.split(".")
             apps.get_model(app_label, model)
@@ -512,7 +495,9 @@ class KeycloakPermission(KeycloakSync):
             logger.warning(f"Lookup Error: Model '{model_name}' could not be found.")
             return False
 
-    def _model_registered_perms_generator(self, model_name, django_perms: QuerySet):
+    def _model_registered_perms_generator(
+        self, model_name: str, django_perms: QuerySet
+    ) -> Optional[QuerySet]:
         from django.contrib.contenttypes.models import ContentType
 
         registered_perms = self.desired_models_perms_map[model_name]
@@ -538,7 +523,7 @@ class KeycloakPermission(KeycloakSync):
 
         return perms
 
-    def _create_generator(self):
+    def _create_generator(self) -> Generator[Permission, None, None]:
         """
         Internal method to create a generator that fetches desired permissions for each model.
 
@@ -551,7 +536,6 @@ class KeycloakPermission(KeycloakSync):
         3. Creates Keycloak resource for valid models
         4. Yields filtered permissions
         """
-        Permission = self._get_permission_model()
 
         for model_name in self.desired_models_perms_map:
             if not self._is_valid_model(model_name):
@@ -569,20 +553,18 @@ class KeycloakPermission(KeycloakSync):
             )
             yield from filtered_permissions
 
-    def create_kc_resource(self, model):
-        strategy = "resource"
-        json_resource = self._jsonify(model, strategy=strategy)
-
-        resource = self._get_or_create_kc_entity(json_resource, entity_type=strategy)
+    def create_kc_resource(self, model: str) -> None:
+        json_resource = self._jsonify(model, strategy="resource")
+        resource = self._get_or_create_kc_entity(json_resource, entity_type="resource")
         self.current_resource_id = resource["_id"]
 
-    def create_kc_scope(self, permission):
+    def create_kc_scope(self, permission: Permission) -> Dict[str, Any]:
         json_scope = self._jsonify(permission, strategy="scope")
         scope = self._get_or_create_kc_entity(json_scope, entity_type="scope")
         self.current_scope_id = scope["id"]
         return scope
 
-    def add_kc_scope_to_resource(self, scope):
+    def add_kc_scope_to_resource(self, scope: Dict[str, Any]) -> None:
         resource = kc_admin.get_client_authz_resource(
             self.kc_client_id, self.current_resource_id
         )
@@ -609,14 +591,14 @@ class KeycloakPermission(KeycloakSync):
             raise e
 
     @KeycloakSync.store_kc_id
-    def create_kc_permission(self, permission):
+    def create_kc_permission(self, permission: Permission) -> Dict[str, Any]:
         json_perm = self._jsonify(permission, strategy="permission")
         kc_permission = self._get_or_create_kc_entity(
             json_perm, entity_type="permission"
         )
         return kc_permission
 
-    def run_routine(self):
+    def run_routine(self) -> None:
         while True:
             permission = self._get_next_object()
             if permission is None:
@@ -632,29 +614,16 @@ class KeycloakPermission(KeycloakSync):
                 logger.error(f"Error processing permission '{permission}': {e}")
                 raise e
 
-    @classmethod
-    def process_permission(cls, permission):
-        scope = cls.create_kc_scope(permission)
-        if not scope:
-            raise ValueError(f"Failed to create scope for permission: {permission}")
-
-        kc_permission = cls.create_kc_permission(permission)
-        if not kc_permission:
-            raise ValueError(f"Failed to create Keycloak permission for: {permission}")
-
-        return scope, kc_permission
-
 
 @dataclass
 class KeycloakRole(KeycloakSync):
-    current_role = None
-    current_policy = None
+    current_role: str = None
+    current_policy: str = None
 
-    def _create_generator(self):
+    def _create_generator(self) -> Generator[Group, None, None]:
         """
         Internal method to create a generator that fetches Groups.
         """
-        Group = self._get_group_model()
         groups = Group.objects.all()
 
         group: Group
@@ -662,28 +631,28 @@ class KeycloakRole(KeycloakSync):
             yield group
 
     @KeycloakSync.store_kc_id
-    def create_role(self, group):
+    def create_role(self, group: Group) -> Dict[str, Any]:
         json_role = self._jsonify(group, strategy="role")
         role = self._get_or_create_kc_entity(json_role, entity_type="role")
         self.current_role = role["id"]
         return role
 
-    def get_or_create_policy(self, group, role_id=None):
+    def get_or_create_policy(self, group: Group, role_id: str = None):
         if role_id:
             self.current_role = role_id
         json_policy = self._jsonify(group, strategy="policy")
         policy = self._get_or_create_kc_entity(json_policy, entity_type="policy")
         return policy
 
-    def delete_policy(self, group):
-        policy = self._get_kc_entity_by_name(group, entity_type="policy")
+    def delete_policy(self, group_name: str) -> None:
+        policy = self._get_kc_entity_by_name(group_name, entity_type="policy")
         if policy is None:
             logger.warning(f"the policy {policy} does not exist in keycloak")
             return
         policy_id = policy["id"]
         kc_admin.delete_client_authz_policy(self.kc_client_id, policy_id)
 
-    def add_policies_to_permissions(self, group):
+    def add_policies_to_permissions(self, group: Group) -> None:
         kc_perm_obj = KeycloakPermission()
         permissions = group.permissions.all()
         for permission in permissions:
@@ -713,7 +682,7 @@ class KeycloakRole(KeycloakSync):
             )
             logger.info(f'added {policy["name"]} to permission {kc_permission["name"]}')
 
-    def run_routine(self):
+    def run_routine(self) -> None:
         while True:
             group = self._get_next_object()
             if group is None:
@@ -733,7 +702,7 @@ class KeycloakRole(KeycloakSync):
 
 @dataclass
 class KeycloakUser(KeycloakSync):
-    current_user = None
+    current_user: str = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -741,11 +710,10 @@ class KeycloakUser(KeycloakSync):
             kc_admin.get_clients, "core", "clientId", "id"
         )
 
-    def _create_generator(self):
+    def _create_generator(self) -> Generator[User, None, None]:
         """
         Internal method to create a generator that fetches Groups.
         """
-        User = get_user_model()
         users = User.objects.all()
 
         user: User
@@ -753,7 +721,7 @@ class KeycloakUser(KeycloakSync):
             yield user
 
     @KeycloakSync.store_kc_id
-    def create_user(self, user):
+    def create_user(self, user: User) -> Dict[str, Any]:
         json_user = self._jsonify(user, strategy="user")
 
         kc_user = self._get_or_create_kc_entity(
@@ -764,12 +732,13 @@ class KeycloakUser(KeycloakSync):
         self.current_user = kc_user["id"]
         return kc_user
 
-    def add_tz_user_attr(self, user, user_tz):
-        timezone = [user_tz] if getattr(user, "timezone", None) else ["Asia/Kuwait"]
-        user |= {"attributes": {"timezone": timezone}}
-        kc_admin.update_user(user["id"], user)
+    def add_tz_user_attr(self, kc_user: Dict, user: User) -> None:
+        user_tz = getattr(user, "timezone", None)
+        timezone = [user_tz] if user_tz else ["Asia/Kuwait"]
+        kc_user |= {"attributes": {"timezone": timezone}}
+        kc_admin.update_user(kc_user["id"], kc_user)
 
-    def _add_superadmin_roles(self):
+    def _add_superadmin_roles(self) -> None:
         admin_roles = ["manage-clients", "query-users", "create-client"]
         realm_manage_client_id = self._get_obj_by_kc_key(
             kc_admin.get_clients,
@@ -797,7 +766,7 @@ class KeycloakUser(KeycloakSync):
             self.current_user, self.core_client_id, [superadmin_client_role]
         )
 
-    def assign_user_roles(self, user):
+    def assign_user_roles(self, user: User) -> None:
         groups = user.groups.all()
         roles = []
         for group in groups:
@@ -808,7 +777,7 @@ class KeycloakUser(KeycloakSync):
         if user.is_superuser:
             self._add_superadmin_roles()
 
-    def run_routine(self):
+    def run_routine(self) -> None:
         while True:
             user = self._get_next_object()
             if user is None:
@@ -834,7 +803,7 @@ class KeycloakBase(KeycloakSync):
         self.formatter = self._Formatter(self)
         self._validate_clients()
 
-    def _validate_clients(self):
+    def _validate_clients(self) -> None:
         for clients_type in ["private", "public"]:
             """Validates and processes client list to ensure no duplicates."""
             clients = self.clients.get(f"{clients_type}", {}) or {}
@@ -850,12 +819,12 @@ class KeycloakBase(KeycloakSync):
 
             self.clients[clients_type] = list(base_clients.union(filtered_clients))
 
-    def create_realm(self):
+    def create_realm(self) -> None:
         json_realm = self._jsonify(self.realm_name, strategy="realm")
         kc_admin.create_realm(json_realm, skip_exists=True)
         logger.info(f"created realm {self.realm_name} successfully ")
 
-        def update_up_config():
+        def update_up_config() -> None:
             up_config = kc_admin.get_realm_upconfig(self.realm_name)
             up_config |= {"unmanagedAttributePolicy": "ENABLED"}
             kc_admin.update_realm_upconfig(self.realm_name, up_config)
@@ -869,7 +838,7 @@ class KeycloakBase(KeycloakSync):
         )
 
     def create_client_protocol_mapper(
-        self, client_name, client_scope_id, mapper_type="audience"
+        self, client_name: str, client_scope_id: str, mapper_type: str = "audience"
     ):
         protocol_mappers = self._jsonify(client_name, "protocol_mapper")
         kc_admin.create_client_scope_mapper(
@@ -877,7 +846,7 @@ class KeycloakBase(KeycloakSync):
         )
         logger.info("created mapper {}".format(mapper_type))
 
-    def create_client_scope(self, client_name):
+    def create_client_scope(self, client_name: str) -> str:
         payload = self._jsonify(client_name, "client_scope")
         client_scope = kc_admin.create_client_scope(payload, skip_exists=True)
         logger.info(
@@ -885,7 +854,9 @@ class KeycloakBase(KeycloakSync):
         )
         return client_scope
 
-    def add_client_scope_to_client(self, client_id, client_scope_name="timezone"):
+    def add_client_scope_to_client(
+        self, client_id: str, client_scope_name: str = "timezone"
+    ) -> None:
         client_scope_id = self._get_obj_by_kc_key(
             kc_admin.get_client_scopes, client_scope_name, "name", "id"
         )
@@ -894,16 +865,13 @@ class KeycloakBase(KeycloakSync):
             "client": client_id,
             "clientScopeId": client_scope_id,
         }
-        resp = kc_admin.add_client_default_client_scope(
-            client_id, client_scope_id, payload
-        )
-        return resp
+        kc_admin.add_client_default_client_scope(client_id, client_scope_id, payload)
 
-    def create_client(self, client_name, client_type="private"):
+    def create_client(self, client_name: str, client_type: str = "private") -> str:
         client_payload = self._jsonify([client_name, client_type], "client")
         client_id = kc_admin.create_client(client_payload, skip_exists=True)
 
-        def update_resource_server():
+        def update_resource_server() -> None:
             resource_server = kc_admin.get_client_resource_server(client_id)
             resource_server["decisionStrategy"] = "UNANIMOUS"
             kc_admin.update_client_resource_server(client_id, resource_server)
@@ -923,7 +891,7 @@ class KeycloakBase(KeycloakSync):
             logger.info("created super_admin client role for core")
         return client_id
 
-    def create_superadmin_role(self):
+    def create_superadmin_role(self) -> None:
         role_representation = {
             "name": "super_admin",
             "description": "super admin",
@@ -931,7 +899,7 @@ class KeycloakBase(KeycloakSync):
         kc_admin.create_realm_role(role_representation, skip_exists=True)
         logger.info("created super_admin role")
 
-    def run_routine(self):
+    def run_routine(self) -> bool:
         try:
             self.create_realm()
             for client, client_type in chain.from_iterable(

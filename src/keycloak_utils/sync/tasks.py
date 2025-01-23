@@ -1,5 +1,6 @@
 import importlib
 import logging
+from typing import Any, Dict
 
 from celery import shared_task
 from keycloak import KeycloakConnectionError
@@ -16,7 +17,9 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
     max_retries=5,
 )
-def run_sync_routine_by_class_name(config, class_name, *args, framework="django"):
+def run_sync_routine_by_class_name(
+    config: Dict[str, Any], class_name: str, *args: Any, framework: str = "django"
+) -> None:
     if class_name == "KeycloakBase":
         config.pop("realm_name")
     try:

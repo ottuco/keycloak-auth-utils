@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -16,17 +16,15 @@ User = get_user_model()
 class EventStrategy(ABC):
     ms_name = KC_UTILS_KC_CLIENT_ID
 
-    def process(self, event_data, operation_type, event_type):
-        if not self._validate_event(event_data):
+    def process(self, event_data: Dict, operation_type: str, event_type: str):
+        if not self._validate_event(event_data) or not (
+            event_info := self._get_event_info(event_data["data"], event_type)
+        ):
             return
-
         operation_strategy = self._get_operation_strategy(operation_type)
-        event_info = self._get_event_info(event_data["data"], event_type)
-        if event_info is None:
-            return
         operation_strategy(*event_info)
 
-    def _validate_event(self, event_data):
+    def _validate_event(self, event_data: Dict) -> bool:
         if "operation_information" not in event_data["data"].keys():
             logger.warning(
                 f"the event data that failed with no operation_information key is {event_data}"
@@ -50,7 +48,7 @@ class EventStrategy(ABC):
         return ContentType.objects.get_for_model(model)
 
     @staticmethod
-    def _handle_groups(roles):
+    def _handle_groups(roles: List):
         from django.contrib.auth.models import Group
 
         for group_name in roles:
@@ -64,7 +62,7 @@ class EventStrategy(ABC):
     def _handle_default(*args):
         logger.warning(f"Unknown operation")
 
-    def _get_event_info(self, event_data, event_type):
+    def _get_event_info(self, event_data: Dict, event_type: str) -> Optional[Dict]:
         event_strategy_map = {
             "Permission": self._get_permission_info,
             "Role": self._get_role_info,
@@ -72,7 +70,7 @@ class EventStrategy(ABC):
         }
         return event_strategy_map[event_type](event_data)
 
-    def _get_permission_info(self, event_data):
+    def _get_permission_info(self, event_data: Dict) -> Optional[Tuple]:
         if event_data["Client_Name"] != self.ms_name:
             return
         operation_info = event_data["operation_information"]
@@ -95,7 +93,7 @@ class EventStrategy(ABC):
             )
             raise ke
 
-    def _get_role_info(self, event_data):
+    def _get_role_info(self, event_data: Dict) -> Optional[Tuple]:
         role = event_data["operation_information"]
         if role["client"] != self.ms_name:
             return
@@ -103,7 +101,7 @@ class EventStrategy(ABC):
         role_id = role["role_id"]
         return group_name, role_id
 
-    def _get_user_info(self, event_data):
+    def _get_user_info(self, event_data: Dict) -> Optional[Tuple]:
         user = event_data["operation_information"]
         payout_roles = (
             user["roles"].get(self.ms_name, [])
@@ -123,15 +121,15 @@ class EventStrategy(ABC):
         return user, roles_names, timezone, is_superuser
 
     @abstractmethod
-    def _handle_create(self, *args): ...
+    def _handle_create(self, *args) -> None: ...
 
     @abstractmethod
-    def _handle_update(self, *args): ...
+    def _handle_update(self, *args) -> None: ...
 
     @abstractmethod
-    def _handle_delete(self, *args): ...
+    def _handle_delete(self, *args) -> None: ...
 
-    def _get_operation_strategy(self, operation_type):
+    def _get_operation_strategy(self, operation_type: str) -> Callable:
         if operation_type == "ASSIGN":
             operation_type = "CREATE"
         strategies = {
@@ -147,7 +145,7 @@ class RoleEventStrategy(EventStrategy):
         super().__init__()
         # self.kc_role = KeycloakRole()
 
-    def _handle_create(self, group_name, role_id):
+    def _handle_create(self, group_name: str, role_id: str):
         try:
             group = Group.objects.create(name=group_name)
             logger.info(f"created group {group}")
@@ -157,7 +155,7 @@ class RoleEventStrategy(EventStrategy):
 
     def _handle_update(self): ...
 
-    def _handle_delete(self, group_name, *args):
+    def _handle_delete(self, group_name: str, role_id: str):
         try:
             group = Group.objects.get(name=group_name)
             # self.kc_role.delete_policy(group)
@@ -171,7 +169,9 @@ class UserEventStrategy(EventStrategy):
     def __init__(self):
         super().__init__()
 
-    def _handle_create(self, kc_user, roles, timezone, is_superuser):
+    def _handle_create(
+        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
+    ):
         user = User.objects.create(
             username=kc_user["username"],
             first_name=kc_user["firstName"],
@@ -181,7 +181,9 @@ class UserEventStrategy(EventStrategy):
         )
         logger.info(f"created user {user}")
 
-    def _handle_update(self, kc_user, roles, timezone, is_superuser):
+    def _handle_update(
+        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
+    ):
         user = None
         for field, value in [
             ("username", kc_user["username"]),
@@ -216,7 +218,7 @@ class UserEventStrategy(EventStrategy):
 
 
 class PermissionEventStrategy(EventStrategy):
-    def _format_camel_case(self, text):
+    def _format_camel_case(self, text: str) -> str:
         import re
 
         segments = re.findall(r"[A-Z][a-z]*", text)
@@ -228,10 +230,10 @@ class PermissionEventStrategy(EventStrategy):
 
     def _handle_create(
         self,
-        permission_app,
-        permission_codename,
-        permission_model,
-        groups_names,
+        permission_app: str,
+        permission_codename: str,
+        permission_model: str,
+        groups_names: List[str],
     ):
         try:
             content_type = ContentType.objects.get(
@@ -263,10 +265,10 @@ class PermissionEventStrategy(EventStrategy):
 
     def _handle_update(
         self,
-        permission_app,
-        permission_codename,
-        permission_model,
-        groups_names,
+        permission_app: str,
+        permission_codename: str,
+        permission_model: str,
+        groups_names: List[str],
     ):
         logger.info(
             f"Updating permission {permission_codename} in {permission_app} related group"
@@ -282,7 +284,9 @@ class PermissionEventStrategy(EventStrategy):
 
         self._update_groups_perms(permission, groups_names)
 
-    def _update_groups_perms(self, permission, groups_names):
+    def _update_groups_perms(
+        self, permission: Permission, groups_names: List[str]
+    ) -> None:
         add_perm_groups = Group.objects.filter(name__in=groups_names).exclude(
             permissions=permission
         )
@@ -325,7 +329,7 @@ class BaseEventStrategyFactory:
                 f"Subclass '{cls.__name__}' must define an 'event_map' as a dictionary."
             )
 
-    def handle_event_type(self, event_type):
+    def handle_event_type(self, event_type: str) -> Callable:
         logger.info(
             f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!"
         )

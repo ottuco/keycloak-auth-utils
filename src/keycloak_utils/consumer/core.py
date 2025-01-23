@@ -1,14 +1,18 @@
 import logging
 import socket
 from functools import partial
+from typing import Dict, List
 
 import msgpack
 import pika
+from pika.adapters.select_connection import SelectConnection
+from pika.channel import Channel
 from pika.exceptions import (
     AMQPChannelError,
     AMQPConnectionError,
     ConnectionClosedByBroker,
 )
+from pika.frame import Method
 
 from ..contrib.django.conf import (
     KC_UTILS_CONSUMER_QUEUES,
@@ -21,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class EventHandler:
     @staticmethod
-    def process_message(event_data):
+    def process_message(event_data: Dict) -> bool:
         from .django.strategies import EventTypeStrategyClassFactory
 
         logger.info(f"the received event data is {event_data}")
@@ -74,11 +78,13 @@ class EventConsumer(EventHandler):
             self._registry = {"create": [], "sync": []}
             self._initialize_queues()
 
-        def _initialize_queues(self):
+        def _initialize_queues(self) -> None:
             self.register_queue(KC_UTILS_CREATE_QUEUES, queue_status="create")
             self.register_queue(KC_UTILS_CONSUMER_QUEUES, queue_status="sync")
 
-        def _register_queues_from_dict(self, queue_dict, queue_status):
+        def _register_queues_from_dict(
+            self, queue_dict: Dict, queue_status: str
+        ) -> None:
             for queue_type, queues in queue_dict.items():
                 for queue_name in queues:
                     routing_key = (
@@ -95,7 +101,9 @@ class EventConsumer(EventHandler):
                         {"queue": queue_name, "routing_key": routing_key}
                     )
 
-        def register_queue(self, queue, routing_key=None, queue_status="create"):
+        def register_queue(
+            self, queue: dict | str, routing_key=None, queue_status="create"
+        ):
             if queue_status not in self._registry:
                 raise ValueError(f"Unsupported queue status: {queue_status}")
 
@@ -106,16 +114,16 @@ class EventConsumer(EventHandler):
                     {"queue": queue, "routing_key": routing_key}
                 )
 
-        def get_registry(self):
+        def get_registry(self) -> Dict[str, List]:
             return self._registry
 
-        def get_queues(self, queue_type):
+        def get_queues(self, queue_type: str) -> List:
             return self._registry.get(queue_type, None)
 
-        def list_queues_dict(self):
+        def list_queues_dict(self) -> Dict[str, List]:
             return self._registry
 
-    def on_queue_declared(self, method_frame):
+    def on_queue_declared(self, method_frame: Method) -> None:
         queue_name = method_frame.method.queue
         logger.info(f"consuming Queue {queue_name}")
         exception_map = {
@@ -131,7 +139,7 @@ class EventConsumer(EventHandler):
             message = exception_map.get(type(e), "Unexpected error")
             logger.error(f"{message}: {e}")
 
-    def stop(self):
+    def stop(self) -> None:
         if self.connection and not self.connection.is_closed:
             logger.info("Closing connection...")
             self.connection.close()
@@ -145,7 +153,7 @@ class EventConsumer(EventHandler):
         ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
 
     @staticmethod
-    def decode_event(body):
+    def decode_event(body: bytes) -> Dict:
         return msgpack.unpackb(body, raw=False)
 
     def handle_message(self, ch, method, properties, body):
@@ -156,7 +164,7 @@ class EventConsumer(EventHandler):
         else:
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-    def establish_connection(self):
+    def establish_connection(self) -> None:
         parameters = pika.URLParameters(self.url)
         self.connection = pika.SelectConnection(
             parameters=parameters,
@@ -171,12 +179,14 @@ class EventConsumer(EventHandler):
             self.stop()
             raise SystemExit(0)
 
-    def on_connection_open(self, connection):
-        logger.info("Connection opened")
+    def on_connection_open(self, connection: SelectConnection) -> None:
+        logger.info(f"Connection opened {connection}")
         self._retry_attempt = 0
         self.connection.channel(on_open_callback=self.on_channel_open)
 
-    def on_connection_error(self, connection, error):
+    def on_connection_error(
+        self, connection: SelectConnection, error: Exception
+    ) -> None:
         logger.error(f"Connection error: {error}")
 
         self._retry_attempt += 1
@@ -197,16 +207,18 @@ class EventConsumer(EventHandler):
 
         connection.ioloop.call_later(delay, self.establish_connection)
 
-    def on_connection_close(self, connection, reason):
-        logger.warning(f"Connection closed: {reason}")
+    def on_connection_close(
+        self, connection: SelectConnection, reason: Exception | str
+    ) -> None:
+        logger.warning(f"Connection {connection} closed: {reason}")
         self.stop()
 
-    def on_channel_open(self, channel):
+    def on_channel_open(self, channel: Channel) -> None:
         logger.info("Channel opened")
         self.channel = channel
         self.run_routine()
 
-    def run_routine(self):
+    def run_routine(self) -> None:
         if not self.queue_reg:
             logger.warning(
                 "queue registry is empty please register a queue or assign env var value"
@@ -219,7 +231,7 @@ class EventConsumer(EventHandler):
                     callback=self.on_queue_declared if queue_status == "sync" else None,
                 )
 
-    def setup_queue_and_dlx(self, params: dict, callback=None):
+    def setup_queue_and_dlx(self, params: dict, callback=None) -> None:
         queue = params["queue"]
         routing_key = params["routing_key"]
         dlx_queue = f"{queue}-dlx"
