@@ -105,13 +105,11 @@ class EventStrategy(ABC):
 
     def _get_user_info(self, event_data):
         user = event_data["operation_information"]
-        email = user["email"]
-        firstname = user["firstName"]
-        lastname = user["lastName"]
-        username = user["username"]
-        enabled = user["enabled"]
-        roles = user["roles"]
-        payout_roles = roles.get(self.ms_name, []) if isinstance(roles, dict) else []
+        payout_roles = (
+            user["roles"].get(self.ms_name, [])
+            if isinstance(user["roles"], dict)
+            else []
+        )
         roles_names = [role["name"] for role in payout_roles]
         timezone = next(
             (
@@ -121,17 +119,8 @@ class EventStrategy(ABC):
             ),
             None,
         )
-        kc_id = user["user_id"]
-        return (
-            email,
-            username,
-            firstname,
-            lastname,
-            roles_names,
-            enabled,
-            timezone,
-            kc_id,
-        )
+        is_superuser = "super_admin" in roles_names
+        return user, roles_names, timezone, is_superuser
 
     @abstractmethod
     def _handle_create(self, *args): ...
@@ -182,23 +171,22 @@ class UserEventStrategy(EventStrategy):
     def __init__(self):
         super().__init__()
 
-    def _handle_create(
-        self, email, username, firstname, lastname, roles, enabled, timezone, kc_id
-    ):
+    def _handle_create(self, kc_user, roles, timezone, is_superuser):
         user = User.objects.create(
-            username=username,
-            first_name=firstname,
-            last_name=lastname,
-            email=email,
-            kc_id=kc_id,
+            username=kc_user["username"],
+            first_name=kc_user["firstName"],
+            last_name=kc_user["lastName"],
+            email=kc_user["email"],
+            kc_id=kc_user["user_id"],
         )
         logger.info(f"created user {user}")
 
-    def _handle_update(
-        self, email, username, firstname, lastname, roles, enabled, timezone, kc_id
-    ):
+    def _handle_update(self, kc_user, roles, timezone, is_superuser):
         user = None
-        for field, value in [("username", username), ("kc_id", kc_id)]:
+        for field, value in [
+            ("username", kc_user["username"]),
+            ("kc_id", kc_user["user_id"]),
+        ]:
             try:
                 user = User.objects.get(**{field: value})
                 break
@@ -208,22 +196,21 @@ class UserEventStrategy(EventStrategy):
 
         if not user:
             logger.error(
-                f"User with username '{username}' and kc_id '{kc_id}' does not exist."
+                f"User with username {kc_user['username']} and kc_id {kc_user['user_id']} does not exist."
             )
             return
 
-        user.username = username
-        user.first_name = firstname
-        user.last_name = lastname
-        user.is_active = enabled
-
-        if "super_admin" in roles:
-            user.is_superuser = True
-
+        user.username = kc_user["username"]
+        user.first_name = kc_user["firstName"]
+        user.last_name = kc_user["lastName"]
+        user.is_active = kc_user["enabled"]
+        user.email = kc_user["email"]
+        setattr(user, "timezone", timezone)
+        user.is_superuser = is_superuser
         user_groups = Group.objects.filter(name__in=roles)
         user.groups.set(user_groups)
         user.save()
-        logger.info(f"user {username} updated")
+        logger.info(f"user {kc_user['username']} updated")
 
     def _handle_delete(self, *args): ...
 
