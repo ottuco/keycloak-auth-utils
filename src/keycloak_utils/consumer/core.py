@@ -250,7 +250,7 @@ class EventConsumer(EventHandler):
                 durable=True,
                 arguments={
                     "x-dead-letter-exchange": self.dlx_exchange,
-                    "x-dead-letter-routing-key": dlx_queue,
+                    "x-dead-letter-routing-key": dlx_routing_key,
                     "x-message-ttl": self.user_sync_ttl,
                 },
                 callback=callback,
