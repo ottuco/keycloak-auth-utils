@@ -15,9 +15,22 @@ User = get_user_model()
 
 
 class EventStrategy(ABC):
-    ms_name = KC_UTILS_KC_CLIENT_ID
+    ms_name: str = KC_UTILS_KC_CLIENT_ID
 
     def process(self, event_data: Dict, operation_type: str, event_type: str):
+        """
+        Processes an event based on its data, operation type, and event type.
+
+        Args:
+            event_data (Dict): The event data containing operation information.
+            operation_type (str): The type of operation (e.g., 'CREATE', 'UPDATE', 'DELETE').
+            event_type (str): The type of event (e.g., 'Permission', 'Role', 'User').
+
+        Functionality:
+            - Validates the event data.
+            - Retrieves the event information based on the event type.
+            - Executes the corresponding operation strategy (CREATE, UPDATE, DELETE).
+        """
         if not self._validate_event(event_data) or not (
             event_info := self._get_event_info(event_data["data"], event_type)
         ):
@@ -26,6 +39,16 @@ class EventStrategy(ABC):
         operation_strategy(*event_info)
 
     def _validate_event(self, event_data: Dict) -> bool:
+        """
+        Validates the event data to ensure it contains the necessary information.
+
+        Args:
+            event_data (Dict): The event data to validate.
+
+        Returns:
+            bool: True if the event data is valid, otherwise False.
+        """
+
         if "operation_information" not in event_data["data"].keys():
             logger.warning(
                 f"the event data that failed with no operation_information key is {event_data}"
@@ -36,7 +59,16 @@ class EventStrategy(ABC):
 
     @staticmethod
     def _get_model_class(app_label: str, model_name: str) -> Optional[Type]:
-        """Fetch the model class dynamically."""
+        """
+        Fetches the model class dynamically based on the app label and model name.
+
+        Args:
+            app_label (str): The app label where the model is located.
+            model_name (str): The name of the model.
+
+        Returns:
+            Optional[Type]: The model class if found, otherwise None.
+        """
         try:
             return apps.get_model(app_label, model_name)
         except Exception as e:
@@ -45,11 +77,25 @@ class EventStrategy(ABC):
 
     @staticmethod
     def _get_content_type_for_model(model: Type) -> ContentType:
-        """Fetch the content type for a given model."""
+        """
+        Retrieves the content type for a given model.
+
+        Args:
+                model (Type): The model class.
+
+        Returns:
+                ContentType: The content type associated with the model.
+        """
         return ContentType.objects.get_for_model(model)
 
     @staticmethod
     def _handle_groups(roles: List):
+        """
+        Handles the creation or retrieval of user groups based on roles.
+
+        Args:
+            roles (List): A list of roles to be converted into groups.
+        """
         from django.contrib.auth.models import Group
 
         for group_name in roles:
@@ -61,9 +107,25 @@ class EventStrategy(ABC):
 
     @staticmethod
     def _handle_default(*args):
+        """
+        Handles unknown operations by logging a warning.
+
+        Args:
+            *args: Any additional arguments.
+        """
         logger.warning(f"Unknown operation")
 
     def _get_event_info(self, event_data: Dict, event_type: str) -> Optional[Dict]:
+        """
+        Retrieves event information based on the event type.
+
+        Args:
+            event_data (Dict): The event data to extract information from.
+            event_type (str): The type of event (e.g., 'Permission', 'Role', 'User').
+
+        Returns:
+            Optional[Dict]: The extracted event information, or None if not applicable.
+        """
         event_strategy_map = {
             "Permission": self._get_permission_info,
             "Role": self._get_role_info,
@@ -72,6 +134,15 @@ class EventStrategy(ABC):
         return event_strategy_map[event_type](event_data)
 
     def _get_permission_info(self, event_data: Dict) -> Optional[Tuple]:
+        """
+        Extracts permission-related information from the event data.
+
+        Args:
+            event_data (Dict): The event data containing permission information.
+
+        Returns:
+            Optional[Tuple]: A tuple containing permission-related information, or None if not valid.
+        """
         if event_data["Client_Name"] != self.ms_name:
             return
         operation_info = event_data["operation_information"]
@@ -95,6 +166,15 @@ class EventStrategy(ABC):
             raise ke
 
     def _get_role_info(self, event_data: Dict) -> Optional[Tuple]:
+        """
+        Extracts role-related information from the event data.
+
+        Args:
+            event_data (Dict): The event data containing role information.
+
+        Returns:
+            Optional[Tuple]: A tuple containing role-related information, or None if not valid.
+        """
         role = event_data["operation_information"]
         if role["client"] != self.ms_name:
             return
@@ -103,6 +183,15 @@ class EventStrategy(ABC):
         return group_name, role_id
 
     def _get_user_info(self, event_data: Dict) -> Optional[Tuple]:
+        """
+        Extracts user-related information from the event data.
+
+        Args:
+            event_data (Dict): The event data containing user information.
+
+        Returns:
+            Optional[Tuple]: A tuple containing user-related information, or None if not valid.
+        """
         kc_admin.connection.realm_name = KC_UTILS_KC_REALM
         clients = kc_admin.get_clients()
         if not any(
@@ -137,6 +226,16 @@ class EventStrategy(ABC):
     def _handle_delete(self, *args) -> None: ...
 
     def _get_operation_strategy(self, operation_type: str) -> Callable:
+        """
+        Retrieves the appropriate strategy for the given operation type.
+
+        Args:
+            operation_type (str): The type of operation (e.g., 'CREATE', 'UPDATE', 'DELETE').
+
+        Returns:
+            Callable: The function that handles the operation type.
+        """
+
         if operation_type == "ASSIGN":
             operation_type = "CREATE"
         strategies = {
@@ -148,24 +247,57 @@ class EventStrategy(ABC):
 
 
 class RoleEventStrategy(EventStrategy):
+    """
+    Strategy to handle events related to roles, such as create and delete operations.
+    """
+
     def __init__(self):
+        """
+        Initializes the RoleEventStrategy by calling the parent class constructor.
+        """
         super().__init__()
-        # self.kc_role = KeycloakRole()
+        # self.kc_role = KeycloakRole()  # Placeholder for keycloak role handling
 
     def _handle_create(self, group_name: str, role_id: str):
+        """
+        Handles the creation of a group.
+
+        Args:
+            group_name (str): The name of the group to be created.
+            role_id (str): The ID of the associated role.
+
+        Logs:
+            Info: Successfully created a group with the provided name.
+            Error: If the group creation fails.
+        """
         try:
             group = Group.objects.create(name=group_name)
             logger.info(f"created group {group}")
-            # self.kc_role.get_or_create_policy(group, role_id)
+            # self.kc_role.get_or_create_policy(group, role_id)  # Placeholder for policy creation
         except Exception as e:
             logger.error(f"Error creating group {group_name}: {e}")
 
-    def _handle_update(self): ...
+    def _handle_update(self):
+        """
+        Placeholder method for handling updates on groups.
+        """
+        pass
 
     def _handle_delete(self, group_name: str, role_id: str):
+        """
+        Handles the deletion of a group.
+
+        Args:
+            group_name (str): The name of the group to be deleted.
+            role_id (str): The ID of the associated role.
+
+        Logs:
+            Info: Successfully deleted the group.
+            Error: If the group deletion fails.
+        """
         try:
             group = Group.objects.get(name=group_name)
-            # self.kc_role.delete_policy(group)
+            # self.kc_role.delete_policy(group)  # Placeholder for policy deletion
             group.delete()
             logger.info(f"group {group_name} deleted")
         except Exception as e:
@@ -173,12 +305,26 @@ class RoleEventStrategy(EventStrategy):
 
 
 class UserEventStrategy(EventStrategy):
-    def __init__(self):
-        super().__init__()
+    """
+    Strategy to handle events related to users, such as create, update, and delete operations.
+    """
 
     def _handle_create(
         self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
     ):
+        """
+        Handles the creation of a new user.
+
+        Args:
+            kc_user (Dict): User details from Keycloak.
+            roles (List): A list of roles to assign to the user.
+            timezone (str): The user's timezone.
+            is_superuser (bool): Whether the user is a superuser.
+
+        Logs:
+            Info: Successfully created a new user with the provided details.
+            Error: If user creation fails.
+        """
         user = User.objects.create(
             username=kc_user["username"],
             first_name=kc_user["firstName"],
@@ -191,6 +337,19 @@ class UserEventStrategy(EventStrategy):
     def _handle_update(
         self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
     ):
+        """
+        Handles the update of an existing user.
+
+        Args:
+            kc_user (Dict): User details from Keycloak.
+            roles (List): A list of roles to assign to the user.
+            timezone (str): The user's timezone.
+            is_superuser (bool): Whether the user is a superuser.
+
+        Logs:
+            Info: Successfully updated the user.
+            Error: If user update fails or user does not exist.
+        """
         user = None
         for field, value in [
             ("username", kc_user["username"]),
@@ -221,11 +380,28 @@ class UserEventStrategy(EventStrategy):
         user.save()
         logger.info(f"user {kc_user['username']} updated")
 
-    def _handle_delete(self, *args): ...
+    def _handle_delete(self, *args):
+        """
+        Placeholder method for handling the deletion of a user.
+        """
+        pass
 
 
 class PermissionEventStrategy(EventStrategy):
+    """
+    Strategy for handling permission-related events such as creation, update, and assignment to groups.
+    """
+
     def _format_camel_case(self, text: str) -> str:
+        """
+        Converts a camel case string to a human-readable format by separating the words with spaces.
+
+        Args:
+            text (str): The camel case string to be formatted.
+
+        Returns:
+            str: The formatted string with spaces separating words.
+        """
         import re
 
         segments = re.findall(r"[A-Z][a-z]*", text)
@@ -242,6 +418,19 @@ class PermissionEventStrategy(EventStrategy):
         permission_model: str,
         groups_names: List[str],
     ):
+        """
+        Handles the creation of a new permission for a specific model and codename.
+
+        Args:
+            permission_app (str): The app where the permission belongs.
+            permission_codename (str): The codename of the permission.
+            permission_model (str): The model associated with the permission.
+            groups_names (List[str]): The list of group names to assign the permission to.
+
+        Logs:
+            Info: Whether the permission was created or already exists.
+            Warning/Error: If content type or permission creation fails.
+        """
         try:
             content_type = ContentType.objects.get(
                 app_label=permission_app, model=permission_model.lower()
@@ -277,6 +466,18 @@ class PermissionEventStrategy(EventStrategy):
         permission_model: str,
         groups_names: List[str],
     ):
+        """
+        Handles the update of an existing permission.
+
+        Args:
+            permission_app (str): The app where the permission belongs.
+            permission_codename (str): The codename of the permission.
+            permission_model (str): The model associated with the permission.
+            groups_names (List[str]): The list of group names to update permissions for.
+
+        Logs:
+            Info: If the permission is successfully updated or not registered.
+        """
         logger.info(
             f"Updating permission {permission_codename} in {permission_app} related group"
         )
@@ -294,6 +495,16 @@ class PermissionEventStrategy(EventStrategy):
     def _update_groups_perms(
         self, permission: Permission, groups_names: List[str]
     ) -> None:
+        """
+        Updates the permission assignments for specific groups.
+
+        Args:
+            permission (Permission): The permission to be assigned or removed.
+            groups_names (List[str]): The list of group names to add or remove the permission from.
+
+        Logs:
+            Info: Success or failure of adding/removing the permission from groups.
+        """
         add_perm_groups = Group.objects.filter(name__in=groups_names).exclude(
             permissions=permission
         )
@@ -325,11 +536,28 @@ class PermissionEventStrategy(EventStrategy):
         else:
             logger.info("No groups need this permission added.")
 
-    def _handle_delete(self): ...
+    def _handle_delete(self):
+        """
+        Placeholder method for handling the deletion of a permission.
+        """
+        pass
 
 
 class BaseEventStrategyFactory:
+    """
+    Base class for event strategy factories, ensuring the event map is defined in subclasses.
+    """
+
     def __init_subclass__(cls, **kwargs):
+        """
+        Ensures that the subclass defines an 'event_map' as a dictionary.
+
+        Args:
+            kwargs: Additional keyword arguments.
+
+        Raises:
+            AttributeError: If the subclass does not define the 'event_map' attribute.
+        """
         super().__init_subclass__(**kwargs)
         if not hasattr(cls, "event_map") or not isinstance(cls.event_map, dict):
             raise AttributeError(
@@ -337,6 +565,18 @@ class BaseEventStrategyFactory:
             )
 
     def handle_event_type(self, event_type: str) -> Callable:
+        """
+        Handles an event type by mapping it to the appropriate strategy.
+
+        Args:
+            event_type (str): The event type to be handled.
+
+        Returns:
+            Callable: The strategy handler for the event type.
+
+        Raises:
+            KeyError: If the event type is not found in the event map.
+        """
         logger.info(
             f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!"
         )
@@ -347,6 +587,10 @@ class BaseEventStrategyFactory:
 
 
 class KCEventStrategyFactory(BaseEventStrategyFactory):
+    """
+    Factory for handling Keycloak-related events, mapping event types to corresponding strategies.
+    """
+
     event_map = {
         "Permission": PermissionEventStrategy,
         "Role": RoleEventStrategy,
@@ -355,10 +599,18 @@ class KCEventStrategyFactory(BaseEventStrategyFactory):
 
 
 class PaymentEventStrategyFactory(BaseEventStrategyFactory):
+    """
+    Placeholder factory for handling payment-related events.
+    """
+
     event_map = {}
 
 
 class EventTypeStrategyClassFactory(BaseEventStrategyFactory):
+    """
+    Factory for handling different event categories (e.g., payment, Keycloak) and mapping them to specific factories.
+    """
+
     event_map = {
         "payment": PaymentEventStrategyFactory,
         "kc": KCEventStrategyFactory,

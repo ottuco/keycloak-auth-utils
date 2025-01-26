@@ -24,8 +24,24 @@ logger = logging.getLogger(__name__)
 
 
 class EventHandler:
+    """
+    Handles the processing of event messages by determining the appropriate strategy
+    based on the event type and operation type.
+    """
+
     @staticmethod
     def process_message(event_data: Dict) -> bool:
+        """
+        Processes an event message by determining its event and operation type,
+        and invoking the appropriate strategy to handle it.
+
+        Args:
+            event_data (Dict): The event data containing event type, operation type,
+            and operation information.
+
+        Returns:
+            bool: True if the event is successfully processed, False otherwise.
+        """
         from .django.strategies import EventTypeStrategyClassFactory
 
         logger.info(f"the received event data is {event_data}")
@@ -58,7 +74,16 @@ class EventHandler:
 
 
 class EventConsumer(EventHandler):
+    """
+    Consumer class that extends EventHandler to process messages from RabbitMQ.
+    Manages connections, queue registration, and message handling routines.
+    """
+
     def __init__(self):
+        """
+        Initializes EventConsumer with RabbitMQ connection parameters,
+        queue registry, and retry mechanism.
+        """
         self.connection = None
         self.channel = None
         self.url = RABBITMQ_URL
@@ -74,17 +99,31 @@ class EventConsumer(EventHandler):
         self.max_retries = 10
 
     class QueueRegistry:
+        """
+        Registry for managing and initializing RabbitMQ queues.
+        """
+
         def __init__(self):
             self._registry = {"create": [], "sync": []}
             self._initialize_queues()
 
         def _initialize_queues(self) -> None:
+            """
+            Initializes the queue registry by registering default queues.
+            """
             self.register_queue(KC_UTILS_CREATE_QUEUES, queue_status="create")
             self.register_queue(KC_UTILS_CONSUMER_QUEUES, queue_status="sync")
 
         def _register_queues_from_dict(
             self, queue_dict: Dict, queue_status: str
         ) -> None:
+            """
+            Registers queues from a dictionary.
+
+            Args:
+                queue_dict (Dict): Dictionary containing queue configurations.
+                queue_status (str): Queue status (e.g., 'create', 'sync').
+            """
             for queue_type, queues in queue_dict.items():
                 for queue_name in queues:
                     routing_key = (
@@ -104,6 +143,14 @@ class EventConsumer(EventHandler):
         def register_queue(
             self, queue: dict | str, routing_key=None, queue_status="create"
         ):
+            """
+            Registers a queue in the registry.
+
+            Args:
+                queue (dict | str): Queue configuration or name.
+                routing_key (str, optional): Routing key for the queue.
+                queue_status (str): Queue status (e.g., 'create', 'sync').
+            """
             if queue_status not in self._registry:
                 raise ValueError(f"Unsupported queue status: {queue_status}")
 
@@ -115,22 +162,51 @@ class EventConsumer(EventHandler):
                 )
 
         def get_registry(self) -> Dict[str, List]:
+            """
+            Retrieves the full queue registry.
+
+            Returns:
+                Dict[str, List]: Registry of queues.
+            """
             return self._registry
 
         def get_queues(self, queue_type: str) -> List:
+            """
+            Retrieves queues of a specific type.
+
+            Args:
+                queue_type (str): Queue type (e.g., 'create', 'sync').
+
+            Returns:
+                List: List of queues for the specified type.
+            """
             return self._registry.get(queue_type, None)
 
         def list_queues_dict(self) -> Dict[str, List]:
+            """
+            Lists all registered queues.
+
+            Returns:
+                Dict[str, List]: Dictionary of registered queues.
+            """
             return self._registry
 
-    def on_queue_declared(self, method_frame: Method) -> None:
+    def on_queue_declared(self, method_frame) -> None:
+        """
+        Callback invoked when a queue is successfully declared.
+
+        Args:
+            method_frame: Frame containing queue declaration details.
+        """
         queue_name = method_frame.method.queue
-        logger.info(f"consuming Queue {queue_name}")
+        logger.info(f"Consuming from queue: {queue_name}")
+
         exception_map = {
             AMQPConnectionError: "Connection error",
             AMQPChannelError: "Channel error",
             ConnectionClosedByBroker: "Connection closed by broker",
         }
+
         try:
             self.channel.basic_consume(
                 queue=queue_name, on_message_callback=self.handle_message
@@ -140,31 +216,65 @@ class EventConsumer(EventHandler):
             logger.error(f"{message}: {e}")
 
     def stop(self) -> None:
+        """
+        Gracefully stops the connection and I/O loop.
+        """
         if self.connection and not self.connection.is_closed:
-            logger.info("Closing connection...")
+            logger.info("Closing RabbitMQ connection...")
             self.connection.close()
         if self.connection and self.connection.ioloop:
             logger.info("Stopping IOLoop...")
             self.connection.ioloop.stop()
-        logger.info("Stopped consuming messages")
+        logger.info("Stopped consuming messages.")
 
     def reject_callback(self, ch, method, properties, body):
+        """
+        Rejects a message and prevents it from being requeued.
+
+        Args:
+            ch: The channel object.
+            method: Delivery method.
+            properties: Message properties.
+            body: Message body.
+        """
         logger.info(f"Rejecting message: {self.decode_event(body)}")
         ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
 
     @staticmethod
     def decode_event(body: bytes) -> Dict:
+        """
+        Decodes an event message.
+
+        Args:
+            body (bytes): Encoded message body.
+
+        Returns:
+            Dict: Decoded event data.
+        """
         return msgpack.unpackb(body, raw=False)
 
     def handle_message(self, ch, method, properties, body):
+        """
+        Processes an incoming message.
+
+        Args:
+            ch: The channel object.
+            method: Delivery method.
+            properties: Message properties.
+            body: Message body.
+        """
         event_data = self.decode_event(body)
         processed = self.process_message(event_data)
+
         if processed:
             ch.basic_ack(delivery_tag=method.delivery_tag)
         else:
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     def establish_connection(self) -> None:
+        """
+        Establishes a RabbitMQ connection and starts the I/O loop.
+        """
         parameters = pika.URLParameters(self.url)
         self.connection = pika.SelectConnection(
             parameters=parameters,
@@ -180,50 +290,73 @@ class EventConsumer(EventHandler):
             raise SystemExit(0)
 
     def on_connection_open(self, connection: SelectConnection) -> None:
-        logger.info(f"Connection opened {connection}")
+        """
+        Callback invoked when the connection is successfully opened.
+
+        Args:
+            connection (SelectConnection): The connection object.
+        """
+        logger.info("RabbitMQ connection opened.")
         self._retry_attempt = 0
         self.connection.channel(on_open_callback=self.on_channel_open)
 
     def on_connection_error(
         self, connection: SelectConnection, error: Exception
     ) -> None:
+        """
+        Callback invoked when the connection fails to open.
+
+        Args:
+            connection (SelectConnection): The connection object.
+            error (Exception): Error that occurred.
+        """
         logger.error(f"Connection error: {error}")
 
         self._retry_attempt += 1
         if self._retry_attempt > self.max_retries:
-            logger.error("Maximum reconnection attempts reached. Exiting...")
+            logger.error("Maximum retries reached. Exiting...")
             connection.ioloop.stop()
             self.stop()
             raise SystemExit(1)
 
-        delay = min(2 * (2 ** (self._retry_attempt - 1)), 30)
-        logger.info(f"Retry attempt {self._retry_attempt} in {delay} seconds...")
-
-        if not connection.is_closed:
-            try:
-                connection.close()
-            except:
-                pass
-
+        delay = min(2**self._retry_attempt, 30)
+        logger.info(f"Retrying connection in {delay} seconds...")
         connection.ioloop.call_later(delay, self.establish_connection)
 
     def on_connection_close(
         self, connection: SelectConnection, reason: Exception | str
     ) -> None:
-        logger.warning(f"Connection {connection} closed: {reason}")
+        """
+        Callback invoked when the connection is closed.
+
+        Args:
+            connection (SelectConnection): The connection object.
+            reason (Exception | str): Reason for closure.
+        """
+        logger.warning(f"RabbitMQ connection closed: {reason}")
         self.stop()
 
     def on_channel_open(self, channel: Channel) -> None:
-        logger.info("Channel opened")
+        """
+        Callback invoked when the channel is successfully opened.
+
+        Args:
+            channel (Channel): The channel object.
+        """
+        logger.info("RabbitMQ channel opened.")
         self.channel = channel
         self.run_routine()
 
     def run_routine(self) -> None:
+        """
+        Routine to set up queues and start consuming messages.
+        """
         if not self.queue_reg:
             logger.warning(
-                "queue registry is empty please register a queue or assign env var value"
+                "Queue registry is empty. Register a queue or assign environment variables."
             )
             return
+
         for queue_status, queues in self.queue_reg.list_queues_dict().items():
             for queue_params in queues:
                 self.setup_queue_and_dlx(
@@ -232,6 +365,29 @@ class EventConsumer(EventHandler):
                 )
 
     def setup_queue_and_dlx(self, params: dict, callback=None) -> None:
+        """
+        Sets up a main queue, a dead-letter exchange (DLX), and binds them with routing keys.
+
+        Args:
+            params (dict): Contains queue configuration.
+                - queue (str): The name of the main queue.
+                - routing_key (str): The routing key for the main queue.
+            callback (callable, optional): A function to invoke when a queue is declared.
+
+        Functionality:
+            1. Declares a main exchange (`self.main_exchange`) for normal message flow.
+            2. Declares a DLX exchange (`self.dlx_exchange`) for dead-letter handling.
+            3. Declares the main queue with:
+                - A TTL (`self.user_sync_ttl`) for message expiration.
+                - Dead-letter configurations pointing to the DLX exchange.
+            4. Declares a DLX queue for dead-letter messages with its own TTL.
+            5. Binds the main queue to the main exchange and the DLX queue to the DLX exchange.
+
+        Raises:
+            socket.gaierror: If there is a DNS resolution issue.
+            Exception: For any other connection-related errors.
+        """
+
         queue = params["queue"]
         routing_key = params["routing_key"]
         dlx_queue = f"{queue}-dlx"
