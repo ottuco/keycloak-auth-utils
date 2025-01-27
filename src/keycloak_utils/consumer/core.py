@@ -13,6 +13,7 @@ from pika.exceptions import (
     ConnectionClosedByBroker,
 )
 from pika.frame import Method
+from pika.spec import Basic, BasicProperties
 
 from ..contrib.django.conf import (
     KC_UTILS_CONSUMER_QUEUES,
@@ -191,30 +192,6 @@ class EventConsumer(EventHandler):
             """
             return self._registry
 
-    def on_queue_declared(self, method_frame) -> None:
-        """
-        Callback invoked when a queue is successfully declared.
-
-        Args:
-            method_frame: Frame containing queue declaration details.
-        """
-        queue_name = method_frame.method.queue
-        logger.info(f"Consuming from queue: {queue_name}")
-
-        exception_map = {
-            AMQPConnectionError: "Connection error",
-            AMQPChannelError: "Channel error",
-            ConnectionClosedByBroker: "Connection closed by broker",
-        }
-
-        try:
-            self.channel.basic_consume(
-                queue=queue_name, on_message_callback=self.handle_message
-            )
-        except Exception as e:
-            message = exception_map.get(type(e), "Unexpected error")
-            logger.error(f"{message}: {e}")
-
     def stop(self) -> None:
         """
         Gracefully stops the connection and I/O loop.
@@ -253,7 +230,40 @@ class EventConsumer(EventHandler):
         """
         return msgpack.unpackb(body, raw=False)
 
-    def handle_message(self, ch, method, properties, body):
+    def on_queue_declared(self, method_frame) -> None:
+        """
+        Callback invoked when a queue is successfully declared.
+
+        Args:
+            method_frame: Frame containing queue declaration details.
+        """
+        queue_name = method_frame.method.queue
+        logger.info(f"Consuming from queue: {queue_name}")
+
+        exception_map = {
+            AMQPConnectionError: "Connection error",
+            AMQPChannelError: "Channel error",
+            ConnectionClosedByBroker: "Connection closed by broker",
+        }
+
+        try:
+            callback = (
+                self.dlx_handle_message
+                if queue_name[-4:] == "-dlx"
+                else self.handle_message
+            )
+            self.channel.basic_consume(queue=queue_name, on_message_callback=callback)
+        except Exception as e:
+            message = exception_map.get(type(e), "Unexpected error")
+            logger.error(f"{message}: {e}")
+
+    def handle_message(
+        self,
+        channel: Channel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+    ):
         """
         Processes an incoming message.
 
@@ -267,9 +277,81 @@ class EventConsumer(EventHandler):
         processed = self.process_message(event_data)
 
         if processed:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
+            channel.basic_ack(delivery_tag=method.delivery_tag)
         else:
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
+    def dlx_handle_message(
+        self,
+        channel: Channel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+    ) -> None:
+        """
+        Callback function to requeue messages from DLX to the main queue.
+
+        Args:
+            channel (Channel): The RabbitMQ channel.
+            method (Basic.Deliver): The method frame containing delivery information.
+            properties (BasicProperties): The properties of the message, including headers.
+            body (bytes): The message body.
+
+        Raises:
+            Exception: Reraises any unhandled exception to ensure proper handling upstream.
+        """
+        routing_key = method.routing_key.replace("-dlx", "")
+        event_data = self.decode_event(body)
+
+        try:
+            x_death = (
+                properties.headers.get("x-death", []) if properties.headers else []
+            )
+            if x_death and isinstance(x_death, list):
+                details = x_death[0]
+                reason = details.get("reason", "unknown")
+                original_queue = details.get("queue", "unknown")
+                count = details.get("count", 0)
+                logger.info(
+                    "Message dead-lettered. Reason: %s, Original Queue: %s, Retry Count: %d",
+                    reason,
+                    original_queue,
+                    count,
+                )
+            else:
+                logger.warning(
+                    "Message dead-lettered but missing or invalid x-death details."
+                )
+        except Exception as e:
+            logger.error(
+                "Error extracting dead-lettering information: %s",
+                e,
+                exc_info=True,
+            )
+
+        try:
+            channel.basic_publish(
+                exchange=self.main_exchange,
+                routing_key=routing_key,
+                body=body,
+                properties=properties,
+            )
+            channel.basic_ack(delivery_tag=method.delivery_tag)
+            logger.info(
+                "Message requeued to %s: %s",
+                self.main_exchange,
+                self.decode_event(body),
+            )
+        except Exception as e:
+            logger.error("Failed to requeue message: %s", e, exc_info=True)
+            try:
+                channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            except Exception as nack_error:
+                logger.critical(
+                    "Failed to nack message after requeue failure: %s",
+                    nack_error,
+                    exc_info=True,
+                )
 
     def establish_connection(self) -> None:
         """
