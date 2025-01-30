@@ -562,7 +562,7 @@ please provide these classes as strings to dynamically retrieve from inside lib
 - **args**: are arguments needed for class to function correctly
   - for base it's the clients that needs to be created those are passed via cli argvs
   - for permissions it's the permissions that need to be created these are overrides of `desired_models_perms_map` if not passed all permissions inside the microservice will be synced, including django's default ones
-  
+
 ### **2. Consumer**
 The `consumer` command starts a consumer that receives keycloak events and handles them accordingly
 #### **example command:**
@@ -664,7 +664,7 @@ class Command(BaseCommand):
 #### **queue registration examples**
 ##### a. override queue_reg in consumer class
 first val is name second is routing key third is create or consume
-```python    
+```python
 queues_reg = [
     ("users.queuereg_ottu_dev", "eventbus.users.queuereg_ottu_dev", "create"),
     ("users.queuereg2_ottu_dev", "eventbus.users.queuereg2_ottu_dev", "sync"),
@@ -672,7 +672,7 @@ queues_reg = [
 ```
 ##### b. define env vars in microservice settings
 create queues
-```python    
+```python
 KC_UTILS_CREATE_QUEUES = env.dict(
     "KC_UTILS_CREATE_QUEUES",
     default={
@@ -682,7 +682,7 @@ KC_UTILS_CREATE_QUEUES = env.dict(
 )
 ```
 consumer sync queues
-```python    
+```python
 KC_UTILS_CONSUMER_QUEUES = env.dict(
     "KC_UTILS_CONSUMER_QUEUES",
     default={
@@ -692,19 +692,19 @@ KC_UTILS_CONSUMER_QUEUES = env.dict(
 ```
 ##### c. override queue_reg in consumer class
 for create queues
-```bash    
-python manage.py run_consumer --general-queues testdemo --payment-queues paymenttestdemo --user-queues userstestdemo testdemo              
+```bash
+python manage.py run_consumer --general-queues testdemo --payment-queues paymenttestdemo --user-queues userstestdemo testdemo
 ```
 for consumer queues add consumer to the option eg:
-```bash    
-python manage.py run_consumer --user-consumer-queues userstestdemo testdemo              
+```bash
+python manage.py run_consumer --user-consumer-queues userstestdemo testdemo
 ```
 
 #### **example command:**
 ```bash
 python manage.py run_consumer
 ```
-this needs to be run in each microservice and make sure to pass the KC_UTILS_KC_CLIENT_ID env var that specifies which microservice it is run on to pickup only according events 
+this needs to be run in each microservice and make sure to pass the KC_UTILS_KC_CLIENT_ID env var that specifies which microservice it is run on to pickup only according events
 override the queues_reg to define custom values where first arg is queue name second is routing key and third if sync or create
 
 #### **adding your custom handler for custom events**
@@ -773,5 +773,4 @@ class ConsumerAPIView(APIView):
             )
 
 ```
-this creates an apiview that accepts the event data as decoded json format for the app to handle in case of client having a low spec machine that doesnt support consumers 
-
+this creates an apiview that accepts the event data as decoded json format for the app to handle in case of client having a low spec machine that doesnt support consumers

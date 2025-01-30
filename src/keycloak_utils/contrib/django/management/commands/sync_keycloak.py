@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError, KeycloakGetError
 
-from keycloak_utils.sync import kc_admin
+from keycloak_utils.sync.kc_admin import kc_admin
 from keycloak_utils.sync.django.core import (
     KeycloakBase,
     KeycloakPermission,
@@ -162,7 +162,7 @@ class Command(BaseCommand):
             kc_admin.initialize(**self.kc_admin_config)
         except KeycloakConnectionError as e:
             logger.error(
-                "unsuccessful connection attempt to server please make sure that keycloak is running on provided url and verify provided credentials"
+                "unsuccessful connection attempt to server please make sure that keycloak is running on provided url and verify provided credentials",
             )
         #
 
@@ -211,7 +211,6 @@ class Command(BaseCommand):
             logger.info("Keycloak Role sync routine is delegated successfully.")
 
         if options["migrate_permissions"]:
-
             current_app.send_task(
                 TASK,
                 args=(

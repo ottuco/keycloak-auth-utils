@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 
-from ... import kc_admin
+from ...sync.kc_admin import kc_admin
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
 
 logger = logging.getLogger("keycloak_event_consumer")
@@ -51,7 +51,7 @@ class EventStrategy(ABC):
 
         if "operation_information" not in event_data["data"].keys():
             logger.warning(
-                f"the event data that failed with no operation_information key is {event_data}"
+                f"the event data that failed with no operation_information key is {event_data}",
             )
             return False
 
@@ -161,7 +161,7 @@ class EventStrategy(ABC):
             )
         except KeyError as ke:
             logger.error(
-                f"the permission info {permission_info} is not formatted correctly, the format should be app.model.codename"
+                f"the permission info {permission_info} is not formatted correctly, the format should be app.model.codename",
             )
             raise ke
 
@@ -310,7 +310,11 @@ class UserEventStrategy(EventStrategy):
     """
 
     def _handle_create(
-        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
+        self,
+        kc_user: Dict,
+        roles: List,
+        timezone: str,
+        is_superuser: bool,
     ):
         """
         Handles the creation of a new user.
@@ -335,7 +339,11 @@ class UserEventStrategy(EventStrategy):
         logger.info(f"created user {user}")
 
     def _handle_update(
-        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool
+        self,
+        kc_user: Dict,
+        roles: List,
+        timezone: str,
+        is_superuser: bool,
     ):
         """
         Handles the update of an existing user.
@@ -364,7 +372,7 @@ class UserEventStrategy(EventStrategy):
 
         if not user:
             logger.error(
-                f"User with username {kc_user['username']} and kc_id {kc_user['user_id']} does not exist."
+                f"User with username {kc_user['username']} and kc_id {kc_user['user_id']} does not exist.",
             )
             return
 
@@ -433,14 +441,15 @@ class PermissionEventStrategy(EventStrategy):
         """
         try:
             content_type = ContentType.objects.get(
-                app_label=permission_app, model=permission_model.lower()
+                app_label=permission_app,
+                model=permission_model.lower(),
             )
             model_name = self._format_camel_case(content_type.model_class().__name__)
             action = permission_codename.split("_")[0]
             permission_name = f"Can {action} {model_name}"
         except ContentType.DoesNotExist:
             logger.warning(
-                f"no content type match {permission_app} and {permission_model}... breaking"
+                f"no content type match {permission_app} and {permission_model}... breaking",
             )
             return
         except Exception as e:
@@ -479,12 +488,13 @@ class PermissionEventStrategy(EventStrategy):
             Info: If the permission is successfully updated or not registered.
         """
         logger.info(
-            f"Updating permission {permission_codename} in {permission_app} related group"
+            f"Updating permission {permission_codename} in {permission_app} related group",
         )
 
         try:
             permission = Permission.objects.get(
-                codename=permission_codename, content_type__app_label=permission_app
+                codename=permission_codename,
+                content_type__app_label=permission_app,
             )
         except Permission.DoesNotExist:
             logger.info(f"Permission {permission_codename} is not registered")
@@ -493,7 +503,9 @@ class PermissionEventStrategy(EventStrategy):
         self._update_groups_perms(permission, groups_names)
 
     def _update_groups_perms(
-        self, permission: Permission, groups_names: List[str]
+        self,
+        permission: Permission,
+        groups_names: List[str],
     ) -> None:
         """
         Updates the permission assignments for specific groups.
@@ -506,10 +518,10 @@ class PermissionEventStrategy(EventStrategy):
             Info: Success or failure of adding/removing the permission from groups.
         """
         add_perm_groups = Group.objects.filter(name__in=groups_names).exclude(
-            permissions=permission
+            permissions=permission,
         )
         remove_perm_groups = Group.objects.filter(permissions=permission).exclude(
-            name__in=groups_names
+            name__in=groups_names,
         )
 
         if remove_perm_groups:
@@ -517,10 +529,10 @@ class PermissionEventStrategy(EventStrategy):
                 map(
                     lambda group: group.permissions.remove(permission),
                     remove_perm_groups,
-                )
+                ),
             )
             logger.info(
-                f"Removed permission {permission} from groups {remove_perm_groups}"
+                f"Removed permission {permission} from groups {remove_perm_groups}",
             )
         else:
             logger.info("No groups need this permission removed")
@@ -530,7 +542,7 @@ class PermissionEventStrategy(EventStrategy):
                 map(
                     lambda group: group.permissions.add(permission),
                     add_perm_groups,
-                )
+                ),
             )
             logger.info(f"Added permission {permission} to groups {add_perm_groups}")
         else:
@@ -561,7 +573,7 @@ class BaseEventStrategyFactory:
         super().__init_subclass__(**kwargs)
         if not hasattr(cls, "event_map") or not isinstance(cls.event_map, dict):
             raise AttributeError(
-                f"Subclass '{cls.__name__}' must define an 'event_map' as a dictionary."
+                f"Subclass '{cls.__name__}' must define an 'event_map' as a dictionary.",
             )
 
     def handle_event_type(self, event_type: str) -> Callable:
@@ -578,7 +590,7 @@ class BaseEventStrategyFactory:
             KeyError: If the event type is not found in the event map.
         """
         logger.info(
-            f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!"
+            f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!",
         )
         if event_type not in self.event_map.keys():
             raise KeyError(f'the event_type "{event_type}" is not registered')

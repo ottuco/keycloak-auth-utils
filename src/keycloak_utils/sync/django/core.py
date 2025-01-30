@@ -12,7 +12,7 @@ from django.contrib.auth.models import Group, Permission
 from django.db.models import Q, QuerySet
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
-from .. import kc_admin
+from ..kc_admin import kc_admin
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -33,14 +33,17 @@ class KeycloakSync:
         """
         # Get the Keycloak client ID from the environment or create it if it doesn't exist
         self.kc_client_id = self._get_obj_by_kc_key(
-            kc_admin.get_clients, KC_UTILS_KC_CLIENT_ID, "clientId", "id"
+            kc_admin.get_clients,
+            KC_UTILS_KC_CLIENT_ID,
+            "clientId",
+            "id",
         )
         if not self.kc_client_id:
             logger.info(
-                f"{KC_UTILS_KC_CLIENT_ID} client does not exist in current realm, creating..."
+                f"{KC_UTILS_KC_CLIENT_ID} client does not exist in current realm, creating...",
             )
             self.kc_client_id = KeycloakBase(
-                kc_admin.connection.realm_name
+                kc_admin.connection.realm_name,
             ).create_client(KC_UTILS_KC_CLIENT_ID, "private")
 
         # Initialize the generator and formatter
@@ -60,19 +63,27 @@ class KeycloakSync:
         # Mapping for creating different Keycloak entities
         self.entity_creators_map = {
             "resource": lambda json: kc_admin.create_client_authz_resource(
-                self.kc_client_id, json, skip_exists=True
+                self.kc_client_id,
+                json,
+                skip_exists=True,
             ),
             "scope": lambda json: kc_admin.create_client_authz_scopes(
-                self.kc_client_id, json
+                self.kc_client_id,
+                json,
             ),
             "permission": lambda json: kc_admin.create_client_authz_scope_permission(
-                json, self.kc_client_id
+                json,
+                self.kc_client_id,
             ),
             "role": lambda json: kc_admin.create_client_role(
-                self.kc_client_id, json, skip_exists=True
+                self.kc_client_id,
+                json,
+                skip_exists=True,
             ),
             "policy": lambda json: kc_admin.create_client_authz_role_based_policy(
-                self.kc_client_id, json, skip_exists=True
+                self.kc_client_id,
+                json,
+                skip_exists=True,
             ),
             "user": lambda json: kc_admin.create_user(json),
         }
@@ -126,7 +137,7 @@ class KeycloakSync:
             """
             self.outer_instance: KeycloakPermission
             formatted_auth_scope, formatted_auth_scope_display = self.format_scope(
-                perm
+                perm,
             ).values()
             formatted_auth_permission = f"{formatted_auth_scope}.perm"
             formatted_auth_perm_desc = formatted_auth_scope_display
@@ -160,18 +171,19 @@ class KeycloakSync:
 
         def format_user(self, user: User) -> Dict[str, Any]:
             def credential_representation_from_hash(
-                hash_: str, temporary: bool = False
+                hash_: str,
+                temporary: bool = False,
             ) -> List:
                 """
                 Convert django password to keycloak supported credentials format
                 """
                 try:
                     algorithm, hashIterations, salt, hashedSaltedValue = hash_.split(
-                        "$"
+                        "$",
                     )
                 except ValueError:
                     logger.warning(
-                        f"user {user.username} password is incompatible and is not migrated"
+                        f"user {user.username} password is incompatible and is not migrated",
                     )
                     return []
                 return [
@@ -183,7 +195,7 @@ class KeycloakSync:
                         "salt": base64.b64encode(salt.encode()).decode("ascii").strip(),
                         "temporary": temporary,
                         "userLabel": "Password",
-                    }
+                    },
                 ]
 
             user_dict = {
@@ -343,7 +355,7 @@ class KeycloakSync:
 
         if strategy not in strategy_map:
             raise ValueError(
-                f"Invalid strategy: {strategy}. please select one of {strategy_map.keys()}"
+                f"Invalid strategy: {strategy}. please select one of {strategy_map.keys()}",
             )
 
         return strategy_map[strategy](_object)
@@ -382,7 +394,9 @@ class KeycloakSync:
         return obj[return_key] if return_key and obj else obj
 
     def _get_kc_entity_by_name(
-        self, entity_name: str, entity_type: str
+        self,
+        entity_name: str,
+        entity_type: str,
     ) -> Optional[Dict]:
         """
         Fetches an authorization entity (resource, scope, or permission) by its name from Keycloak.
@@ -397,7 +411,7 @@ class KeycloakSync:
         """
         if entity_type not in self.entity_fetchers_map:
             raise ValueError(
-                f"Invalid entity type: {entity_type}. Must be one of {', '.join(self.entity_fetchers_map.keys())}."
+                f"Invalid entity type: {entity_type}. Must be one of {', '.join(self.entity_fetchers_map.keys())}.",
             )
         fetcher_func = self.entity_fetchers_map[entity_type]
         key, use_admin = (
@@ -405,7 +419,10 @@ class KeycloakSync:
         )
 
         obj = self._get_obj_by_kc_key(
-            fetcher_func, entity_name, key, use_admin=use_admin
+            fetcher_func,
+            entity_name,
+            key,
+            use_admin=use_admin,
         )
         return obj
 
@@ -423,13 +440,16 @@ class KeycloakSync:
         """
         if entity_type not in self.entity_creators_map:
             raise ValueError(
-                f"Invalid entity type: {entity_type}. Must be one of {', '.join(self.entity_creators_map.keys())}."
+                f"Invalid entity type: {entity_type}. Must be one of {', '.join(self.entity_creators_map.keys())}.",
             )
 
         return self.entity_creators_map[entity_type](json)
 
     def _get_or_create_kc_entity(
-        self, json: Dict, entity_type: str, key="name"
+        self,
+        json: Dict,
+        entity_type: str,
+        key="name",
     ) -> Optional[Dict]:
         """
         Fetches an entity by its name or creates it if it does not exist.
@@ -581,7 +601,7 @@ class KeycloakPermission(KeycloakSync):
 
             if not Permission.objects.filter(content_type__model=model):
                 logger.warning(
-                    f"Model '{model_name}' does not have associated permissions."
+                    f"Model '{model_name}' does not have associated permissions.",
                 )
                 return False
 
@@ -590,7 +610,7 @@ class KeycloakPermission(KeycloakSync):
         except ValueError:
             logger.warning(
                 f"Value Error: Model {model_name} string must be in the format "
-                "'app_label.ModelName'."
+                "'app_label.ModelName'.",
             )
             return False
 
@@ -599,7 +619,9 @@ class KeycloakPermission(KeycloakSync):
             return False
 
     def _model_registered_perms_generator(
-        self, model_name: str, django_perms: QuerySet
+        self,
+        model_name: str,
+        django_perms: QuerySet,
     ) -> Optional[QuerySet]:
         """
         Generates a filtered queryset of permissions for a given model, based on the registered permissions.
@@ -619,7 +641,8 @@ class KeycloakPermission(KeycloakSync):
             app_label, model_name = model_name.split(".")
 
             content_type = ContentType.objects.get(
-                app_label=app_label, model=model_name.lower()
+                app_label=app_label,
+                model=model_name.lower(),
             )
         except ContentType.DoesNotExist:
             logger.warning(f"Content type for {model_name} does not exist.")
@@ -631,7 +654,7 @@ class KeycloakPermission(KeycloakSync):
         perms = django_perms.filter(query)
         if not perms:
             logger.warning(
-                f"{model_name} does not have any of {registered_perms} permissions."
+                f"{model_name} does not have any of {registered_perms} permissions.",
             )
 
         return perms
@@ -649,7 +672,7 @@ class KeycloakPermission(KeycloakSync):
         for model_name in self.desired_models_perms_map:
             if not self._is_valid_model(model_name):
                 logger.warning(
-                    f"Model {model_name} permissions will not be migrated to Keycloak"
+                    f"Model {model_name} permissions will not be migrated to Keycloak",
                 )
                 continue
 
@@ -658,7 +681,8 @@ class KeycloakPermission(KeycloakSync):
 
             self.create_kc_resource(model_name)
             filtered_permissions = self._model_registered_perms_generator(
-                model_name, permissions
+                model_name,
+                permissions,
             )
             yield from filtered_permissions
 
@@ -696,7 +720,8 @@ class KeycloakPermission(KeycloakSync):
             scope (Dict[str, Any]): The scope object to be added to the resource.
         """
         resource = kc_admin.get_client_authz_resource(
-            self.kc_client_id, self.current_resource_id
+            self.kc_client_id,
+            self.current_resource_id,
         )
         try:
             resource["scopes"] = resource.get("scopes", [])
@@ -705,13 +730,15 @@ class KeycloakPermission(KeycloakSync):
                 for resource_scope in resource["scopes"]
             ):
                 logger.info(
-                    f'Scope {scope["name"]} already exists in resource {resource["name"]}'
+                    f'Scope {scope["name"]} already exists in resource {resource["name"]}',
                 )
                 return
 
             resource["scopes"].append(scope)
             kc_admin.update_client_authz_resource(
-                self.kc_client_id, self.current_resource_id, resource
+                self.kc_client_id,
+                self.current_resource_id,
+                resource,
             )
 
             logger.info(f'Added scope {scope["name"]} to resource {resource["name"]}')
@@ -733,7 +760,8 @@ class KeycloakPermission(KeycloakSync):
         """
         json_perm = self._jsonify(permission, strategy="permission")
         kc_permission = self._get_or_create_kc_entity(
-            json_perm, entity_type="permission"
+            json_perm,
+            entity_type="permission",
         )
         return kc_permission
 
@@ -771,8 +799,7 @@ class KeycloakRole(KeycloakSync):
         Yields: Group objects.
         """
         groups = Group.objects.all()
-        for group in groups:
-            yield group
+        yield from groups
 
     @KeycloakSync.store_kc_id
     def create_role(self, group: Group) -> Dict[str, Any]:
@@ -834,13 +861,14 @@ class KeycloakRole(KeycloakSync):
             policy = self._get_or_create_kc_entity(json_policy, entity_type="policy")
             permission_policies = (
                 kc_admin.get_client_authz_permission_associated_policies(
-                    self.kc_client_id, kc_permission_id
+                    self.kc_client_id,
+                    kc_permission_id,
                 )
             )
 
             if not all(policy["name"] != p["name"] for p in permission_policies):
                 logger.info(
-                    f'Policy {policy["name"]} already exists in permission {kc_permission["name"]}'
+                    f'Policy {policy["name"]} already exists in permission {kc_permission["name"]}',
                 )
                 continue
 
@@ -848,7 +876,9 @@ class KeycloakRole(KeycloakSync):
             permission_policies.append(policy)
             kc_permission["policies"] = [policy["id"] for policy in permission_policies]
             kc_admin.update_client_authz_scope_permission(
-                kc_permission, self.kc_client_id, kc_permission_id
+                kc_permission,
+                self.kc_client_id,
+                kc_permission_id,
             )
             logger.info(f'Added {policy["name"]} to permission {kc_permission["name"]}')
 
@@ -883,7 +913,10 @@ class KeycloakUser(KeycloakSync):
         """
         super().__post_init__()
         self.core_client_id = self._get_obj_by_kc_key(
-            kc_admin.get_clients, "core", "clientId", "id"
+            kc_admin.get_clients,
+            "core",
+            "clientId",
+            "id",
         )
 
     def _create_generator(self) -> Generator[User, None, None]:
@@ -892,8 +925,7 @@ class KeycloakUser(KeycloakSync):
         Yields: User objects.
         """
         users = User.objects.all()
-        for user in users:
-            yield user
+        yield from users
 
     @KeycloakSync.store_kc_id
     def create_user(self, user: User) -> Dict[str, Any]:
@@ -906,7 +938,9 @@ class KeycloakUser(KeycloakSync):
         """
         json_user = self._jsonify(user, strategy="user")
         kc_user = self._get_or_create_kc_entity(
-            json_user, entity_type="user", key="username"
+            json_user,
+            entity_type="user",
+            key="username",
         )
         self.add_tz_user_attr(kc_user, user)
 
@@ -944,16 +978,21 @@ class KeycloakUser(KeycloakSync):
             for role in admin_roles
         ]
         kc_admin.assign_client_role(
-            self.current_user, realm_manage_client_id, superadmin_management_roles
+            self.current_user,
+            realm_manage_client_id,
+            superadmin_management_roles,
         )
         superadmin_realm_role = kc_admin.get_realm_role("super_admin")
         kc_admin.assign_realm_roles(self.current_user, [superadmin_realm_role])
 
         superadmin_client_role = kc_admin.get_client_role(
-            self.core_client_id, "super_admin"
+            self.core_client_id,
+            "super_admin",
         )
         kc_admin.assign_client_role(
-            self.current_user, self.core_client_id, [superadmin_client_role]
+            self.current_user,
+            self.core_client_id,
+            [superadmin_client_role],
         )
 
     def assign_user_roles(self, user: User) -> None:
@@ -1038,7 +1077,7 @@ class KeycloakBase(KeycloakSync):
             duplicates = filtered_clients.intersection(base_clients)
             if duplicates:
                 logger.warning(
-                    f"The following clients are duplicates and will be ignored: {', '.join(duplicates)}"
+                    f"The following clients are duplicates and will be ignored: {', '.join(duplicates)}",
                 )
 
             self.clients[clients_type] = list(base_clients.union(filtered_clients))
@@ -1069,11 +1108,16 @@ class KeycloakBase(KeycloakSync):
 
         client_scope_id = self.create_client_scope("timezone")
         self.create_client_protocol_mapper(
-            "timezone", client_scope_id, mapper_type="user_attribute"
+            "timezone",
+            client_scope_id,
+            mapper_type="user_attribute",
         )
 
     def create_client_protocol_mapper(
-        self, client_name: str, client_scope_id: str, mapper_type: str = "audience"
+        self,
+        client_name: str,
+        client_scope_id: str,
+        mapper_type: str = "audience",
     ):
         """
         Creates a protocol mapper for a client using the specified mapper type (e.g., "audience" or "user_attribute").
@@ -1088,7 +1132,8 @@ class KeycloakBase(KeycloakSync):
         """
         protocol_mappers = self._jsonify(client_name, "protocol_mapper")
         kc_admin.create_client_scope_mapper(
-            client_scope_id, protocol_mappers[mapper_type]
+            client_scope_id,
+            protocol_mappers[mapper_type],
         )
         logger.info(f"Created {mapper_type} protocol mapper.")
 
@@ -1111,7 +1156,9 @@ class KeycloakBase(KeycloakSync):
         return client_scope
 
     def add_client_scope_to_client(
-        self, client_id: str, client_scope_name: str = "timezone"
+        self,
+        client_id: str,
+        client_scope_name: str = "timezone",
     ) -> None:
         """
         Adds a client scope (e.g., "timezone") to a client.
@@ -1124,7 +1171,10 @@ class KeycloakBase(KeycloakSync):
             Info: Logs success after adding the client scope to the client.
         """
         client_scope_id = self._get_obj_by_kc_key(
-            kc_admin.get_client_scopes, client_scope_name, "name", "id"
+            kc_admin.get_client_scopes,
+            client_scope_name,
+            "name",
+            "id",
         )
         payload = {
             "realm": kc_admin.connection.realm_name,

@@ -12,7 +12,6 @@ from pika.exceptions import (
     AMQPConnectionError,
     ConnectionClosedByBroker,
 )
-from pika.frame import Method
 from pika.spec import Basic, BasicProperties
 
 from ..contrib.django.conf import (
@@ -62,7 +61,7 @@ class EventHandler:
 
         try:
             event_factory = EventTypeStrategyClassFactory().handle_event_type(
-                base_event_strategy
+                base_event_strategy,
             )
             strategy = event_factory.handle_event_type(event_type)
 
@@ -90,8 +89,8 @@ class EventConsumer(EventHandler):
         self.url = RABBITMQ_URL
         self.main_exchange = "eventbus.exchange"
         self.dlx_exchange = "eventbus.exchange.dlx"
-        self.user_sync_ttl = 900000
-        self.dlx_ttl = 100000
+        self.user_sync_ttl = 20000
+        self.dlx_ttl = 10000
         self.queue_reg = self.QueueRegistry()
         self.register_queue = partial(self.queue_reg.register_queue)
         self.publish_connection = None
@@ -116,7 +115,9 @@ class EventConsumer(EventHandler):
             self.register_queue(KC_UTILS_CONSUMER_QUEUES, queue_status="sync")
 
         def _register_queues_from_dict(
-            self, queue_dict: Dict, queue_status: str
+            self,
+            queue_dict: Dict,
+            queue_status: str,
         ) -> None:
             """
             Registers queues from a dictionary.
@@ -138,11 +139,14 @@ class EventConsumer(EventHandler):
                         else queue_name
                     )
                     self._registry[queue_status].append(
-                        {"queue": queue_name, "routing_key": routing_key}
+                        {"queue": queue_name, "routing_key": routing_key},
                     )
 
         def register_queue(
-            self, queue: dict | str, routing_key=None, queue_status="create"
+            self,
+            queue: dict | str,
+            routing_key=None,
+            queue_status="create",
         ):
             """
             Registers a queue in the registry.
@@ -159,7 +163,7 @@ class EventConsumer(EventHandler):
                 self._register_queues_from_dict(queue, queue_status)
             else:
                 self._registry[queue_status].append(
-                    {"queue": queue, "routing_key": routing_key}
+                    {"queue": queue, "routing_key": routing_key},
                 )
 
         def get_registry(self) -> Dict[str, List]:
@@ -320,7 +324,7 @@ class EventConsumer(EventHandler):
                 )
             else:
                 logger.warning(
-                    "Message dead-lettered but missing or invalid x-death details."
+                    "Message dead-lettered but missing or invalid x-death details.",
                 )
         except Exception as e:
             logger.error(
@@ -383,7 +387,9 @@ class EventConsumer(EventHandler):
         self.connection.channel(on_open_callback=self.on_channel_open)
 
     def on_connection_error(
-        self, connection: SelectConnection, error: Exception
+        self,
+        connection: SelectConnection,
+        error: Exception,
     ) -> None:
         """
         Callback invoked when the connection fails to open.
@@ -406,7 +412,9 @@ class EventConsumer(EventHandler):
         connection.ioloop.call_later(delay, self.establish_connection)
 
     def on_connection_close(
-        self, connection: SelectConnection, reason: Exception | str
+        self,
+        connection: SelectConnection,
+        reason: Exception | str,
     ) -> None:
         """
         Callback invoked when the connection is closed.
@@ -435,7 +443,7 @@ class EventConsumer(EventHandler):
         """
         if not self.queue_reg:
             logger.warning(
-                "Queue registry is empty. Register a queue or assign environment variables."
+                "Queue registry is empty. Register a queue or assign environment variables.",
             )
             return
 
@@ -477,10 +485,14 @@ class EventConsumer(EventHandler):
 
         try:
             self.channel.exchange_declare(
-                exchange=self.main_exchange, exchange_type="topic", durable=True
+                exchange=self.main_exchange,
+                exchange_type="topic",
+                durable=True,
             )
             self.channel.exchange_declare(
-                exchange=self.dlx_exchange, exchange_type="topic", durable=True
+                exchange=self.dlx_exchange,
+                exchange_type="topic",
+                durable=True,
             )
 
             self.channel.queue_declare(
@@ -504,7 +516,11 @@ class EventConsumer(EventHandler):
             self.channel.queue_declare(
                 queue=dlx_queue,
                 durable=True,
-                arguments={"x-message-ttl": self.dlx_ttl},
+                arguments={
+                    "x-dead-letter-exchange": self.main_exchange,
+                    "x-dead-letter-routing-key": routing_key,
+                    "x-message-ttl": self.dlx_ttl,
+                },
                 callback=callback,
             )
             self.channel.queue_bind(

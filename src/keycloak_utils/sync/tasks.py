@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict
 
 from celery import shared_task
+
 from keycloak import KeycloakConnectionError
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ def run_sync_routine_by_class_name(
     *args: Any,  # Additional arguments passed to the class constructor
     framework: str = "django",  # Framework to be used (default is Django)
 ) -> None:
-    from . import kc_admin
+    from .kc_admin import kc_admin
 
     """
     Runs a synchronization routine for the specified class name (e.g., KeycloakBase)
@@ -41,28 +42,30 @@ def run_sync_routine_by_class_name(
     # Check if class_name is "KeycloakBase" and remove the "realm_name" from the config
     if class_name == "KeycloakBase":
         config.pop(
-            "realm_name"
+            "realm_name",
         )  # Remove realm_name from the configuration if it's KeycloakBase
 
     try:
         # Initialize KeycloakAdmin instance using the provided config
         logger.info("Initializing KeycloakAdmin instance...")
         kc_admin.initialize(
-            **config
+            **config,
         )  # Initialize the KeycloakAdmin object with the configuration
         logger.info("KeycloakAdmin initialized successfully.")
     except KeycloakConnectionError:
         # Log an error message if there is a connection issue with Keycloak
         logger.error(
             f"Unsuccessful connection attempt to the server. Please make sure that Keycloak is running on the provided URL "
-            f"and verify the provided credentials."
+            f"and verify the provided credentials.",
         )
 
     try:
         # Construct the full class path and import the class dynamically
-        class_path = f"keycloak_utils.sync.{framework}.core.{class_name}"  # Full class path including framework
+        # Full class path including framework
+        class_path = f"keycloak_utils.sync.{framework}.core.{class_name}"
         module_name, class_name = class_path.rsplit(
-            ".", 1
+            ".",
+            1,
         )  # Split class path to get module name and class name
         module = importlib.import_module(module_name)  # Import the module dynamically
         cls = getattr(module, class_name)  # Get the class reference from the module

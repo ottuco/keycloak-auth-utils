@@ -19,7 +19,7 @@ class KCUtilsSSOBackend(SSOAuthBackend):
             "client_id": conf.KC_UTILS_OIDC_RP_CLIENT_ID,
             "client_secret": conf.KC_UTILS_OIDC_RP_CLIENT_SECRET,
             "redirect_uri": self.request.build_absolute_uri(
-                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
+                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME),
             ),
             "code": self.auth_code,
             "code_verifier": self.auth_code_verifier,
