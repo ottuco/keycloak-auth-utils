@@ -5,8 +5,6 @@ from typing import Any, Dict
 from celery import shared_task
 from keycloak import KeycloakConnectionError
 
-from . import kc_admin
-
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +23,8 @@ def run_sync_routine_by_class_name(
     *args: Any,  # Additional arguments passed to the class constructor
     framework: str = "django",  # Framework to be used (default is Django)
 ) -> None:
+    from . import kc_admin
+
     """
     Runs a synchronization routine for the specified class name (e.g., KeycloakBase)
     by dynamically importing and initializing the corresponding class.

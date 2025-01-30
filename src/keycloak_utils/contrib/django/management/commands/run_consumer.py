@@ -52,6 +52,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+
         create_queues = {
             "users": options["users_queues"],
             "payment": options["payment_queues"],
@@ -72,16 +73,8 @@ class Command(BaseCommand):
         for queue in self.queues_reg:
             consumer.register_queue(*queue)
 
-        consumer.establish_connection()
-
-        def signal_handler(signum, frame):
-            self.stdout.write(
-                self.style.WARNING("Received shutdown signal. Stopping consumers...")
-            )
-            consumer.stop()
-            sys.exit(0)
-
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-
         self.stdout.write(self.style.SUCCESS("Starting Keycloak event consumer"))
+        consumer.establish_connection()
+        self.stdout.write(
+            self.style.SUCCESS("Received shutdown signal. Stopping consumers...")
+        )
