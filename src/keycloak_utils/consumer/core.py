@@ -5,6 +5,7 @@ from typing import Dict, List
 
 import msgpack
 import pika
+from celery.bin.amqp import exchange_declare
 from pika.adapters.select_connection import SelectConnection
 from pika.channel import Channel
 from pika.exceptions import (
@@ -89,7 +90,7 @@ class EventConsumer(EventHandler):
         self.url = RABBITMQ_URL
         self.main_exchange = "eventbus.exchange"
         self.dlx_exchange = "eventbus.exchange.dlx"
-        self.user_sync_ttl = 20000
+        self.user_sync_ttl = 90000
         self.dlx_ttl = 10000
         self.queue_reg = self.QueueRegistry()
         self.register_queue = partial(self.queue_reg.register_queue)
@@ -305,8 +306,6 @@ class EventConsumer(EventHandler):
             Exception: Reraises any unhandled exception to ensure proper handling upstream.
         """
         routing_key = method.routing_key.replace("-dlx", "")
-        event_data = self.decode_event(body)
-
         try:
             x_death = (
                 properties.headers.get("x-death", []) if properties.headers else []
@@ -335,15 +334,16 @@ class EventConsumer(EventHandler):
 
         try:
             channel.basic_publish(
-                exchange=self.main_exchange,
+                exchange=self.dlx_exchange + "-dlx",
                 routing_key=routing_key,
                 body=body,
                 properties=properties,
             )
             channel.basic_ack(delivery_tag=method.delivery_tag)
             logger.info(
-                "Message requeued to %s: %s",
-                self.main_exchange,
+                "Message requeued to %s using routing key %s: %s",
+                self.dlx_exchange + "-dlx",
+                routing_key,
                 self.decode_event(body),
             )
         except Exception as e:
@@ -434,7 +434,23 @@ class EventConsumer(EventHandler):
             channel (Channel): The channel object.
         """
         logger.info("RabbitMQ channel opened.")
+
         self.channel = channel
+        self.channel.exchange_declare(
+            exchange=self.main_exchange,
+            exchange_type="topic",
+            durable=True,
+        )
+        self.channel.exchange_declare(
+            exchange=self.dlx_exchange,
+            exchange_type="topic",
+            durable=True,
+        )
+        self.channel.exchange_declare(
+            exchange=self.dlx_exchange + "-dlx",
+            exchange_type="direct",
+            durable=True,
+        )
         self.run_routine()
 
     def run_routine(self) -> None:
@@ -481,20 +497,13 @@ class EventConsumer(EventHandler):
         queue = params["queue"]
         routing_key = params["routing_key"]
         dlx_queue = f"{queue}-dlx"
-        dlx_routing_key = f"{routing_key}-dlx"
+        dlx_routing_key = (
+            f"{routing_key}-dlx"
+            if routing_key != "#"
+            else f"eventbus.general.{queue}-dlx"
+        )
 
         try:
-            self.channel.exchange_declare(
-                exchange=self.main_exchange,
-                exchange_type="topic",
-                durable=True,
-            )
-            self.channel.exchange_declare(
-                exchange=self.dlx_exchange,
-                exchange_type="topic",
-                durable=True,
-            )
-
             self.channel.queue_declare(
                 queue=queue,
                 durable=True,
@@ -513,16 +522,26 @@ class EventConsumer(EventHandler):
                 routing_key=routing_key,
             )
 
+            if routing_key == "#":
+                routing_key = f"eventbus.general.{queue}"
+
+            self.channel.queue_bind(
+                exchange=self.dlx_exchange + "-dlx",
+                queue=queue,
+                routing_key=routing_key,
+            )
+
             self.channel.queue_declare(
                 queue=dlx_queue,
                 durable=True,
                 arguments={
-                    "x-dead-letter-exchange": self.main_exchange,
+                    "x-dead-letter-exchange": self.dlx_exchange + "-dlx",
                     "x-dead-letter-routing-key": routing_key,
                     "x-message-ttl": self.dlx_ttl,
                 },
                 callback=callback,
             )
+
             self.channel.queue_bind(
                 exchange=self.dlx_exchange,
                 queue=dlx_queue,

@@ -7,8 +7,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 
-from ...sync.kc_admin import kc_admin
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
+from ...sync.kc_admin import kc_admin
 
 logger = logging.getLogger("keycloak_event_consumer")
 User = get_user_model()

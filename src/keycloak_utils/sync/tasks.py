@@ -3,7 +3,6 @@ import logging
 from typing import Any, Dict
 
 from celery import shared_task
-
 from keycloak import KeycloakConnectionError
 
 logger = logging.getLogger(__name__)

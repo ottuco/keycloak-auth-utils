@@ -52,7 +52,7 @@ dependencies = [
 
 [project.optional-dependencies]
 django = ["djangorestframework>=3.12.0", "Django>=3.2", "redis>=5.0.3"]
-fastapi = ["fastapi>=0.100.0"]
+fastapi = ["fastapi>=0.68.0"]
 all = ["keycloak-utils[django,fastapi]"]
 
 fastapi-test = ["httpx"]

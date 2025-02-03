@@ -4,13 +4,13 @@ from contextlib import contextmanager
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError, KeycloakGetError
 
-from keycloak_utils.sync.kc_admin import kc_admin
 from keycloak_utils.sync.django.core import (
     KeycloakBase,
     KeycloakPermission,
     KeycloakRole,
     KeycloakUser,
 )
+from keycloak_utils.sync.kc_admin import kc_admin
 
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
