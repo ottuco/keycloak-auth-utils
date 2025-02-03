@@ -16,12 +16,11 @@ from . import conf
 from .views import (
     AuthenticateView,
     CallbackView,
-    LogoutView,
     DjangoAdminLoginView,
     DjangoAdminLogoutView,
     ErrorView,
+    LogoutView,
 )
-
 
 urlpatterns = [
     path(

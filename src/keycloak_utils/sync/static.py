@@ -1,0 +1,5 @@
+CREATE = "add"
+READ = "view"
+UPDATE = "change"
+DELETE = "delete"
+CRUD_PERMISSIONS = [CREATE, READ, UPDATE, DELETE]

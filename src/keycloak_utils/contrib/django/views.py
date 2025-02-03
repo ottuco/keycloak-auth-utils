@@ -1,5 +1,5 @@
-import typing
 import logging
+import typing
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 
@@ -10,14 +10,13 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseRedirect,
 )
-from django.views.generic import RedirectView, View
 from django.urls import reverse
 from django.utils.crypto import get_random_string
 from django.utils.http import urlencode
+from django.views.generic import RedirectView, View
 
-from . import conf
 from ...errors import AuthenticationError
-
+from . import conf
 
 log = logging.getLogger(__name__)
 
@@ -34,16 +33,17 @@ class AuthenticateView(View):
     def get(self, request: HttpRequest) -> HttpResponse:
         next_url: str = request.GET.get(conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME, "")
         failure_url: str = request.GET.get(
-            conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME, ""
+            conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME,
+            "",
         )
 
         if not next_url:
             raise AuthenticationError(
-                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} parameter is required"
+                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} parameter is required",
             )
         if not failure_url:
             raise AuthenticationError(
-                f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required"
+                f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required",
             )
 
         request.session["session_next_url"] = next_url
@@ -57,7 +57,7 @@ class AuthenticateView(View):
             "scope": " ".join(scopes),
             "prompt": "consent",
             "redirect_uri": request.build_absolute_uri(
-                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
+                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME),
             ),
             "code_challenge_method": "S256",
         }
@@ -93,7 +93,7 @@ class CallbackView(View):
 
         if not next_url or not failure_url:
             return HttpResponseBadRequest(
-                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} and {conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} session parameters should be filled"
+                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} and {conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} session parameters should be filled",
             )
 
         if "error" in request.GET:
@@ -113,9 +113,11 @@ class CallbackView(View):
         return HttpResponseRedirect(url)
 
     def auth_callback(
-        self, request: HttpRequest, next_url: str, failure_url: str
+        self,
+        request: HttpRequest,
+        next_url: str,
+        failure_url: str,
     ) -> HttpResponse:
-
         url: str = failure_url
         code: str = request.GET["code"]
         session_challenge: str = request.session.pop("session_challenge", None)
@@ -141,9 +143,11 @@ class CallbackView(View):
         return HttpResponseRedirect(url)
 
     def logout_callback(
-        self, request: HttpRequest, next_url: str, failure_url: str
+        self,
+        request: HttpRequest,
+        next_url: str,
+        failure_url: str,
     ) -> HttpResponse:
-
         url: str = failure_url
         state: str = request.GET["state"]
         session_state: str = request.session.get("session_logout_state")
@@ -169,28 +173,33 @@ class LogoutView(View):
     def get(self, request: HttpRequest) -> HttpResponse:
         next_url: str = request.GET.get(conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME, "")
         failure_url: str = request.GET.get(
-            conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME, ""
+            conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME,
+            "",
         )
 
         if not next_url:
             return HttpResponseBadRequest(
-                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} parameter is required"
+                f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} parameter is required",
             )
         if not failure_url:
             return HttpResponseBadRequest(
-                f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required"
+                f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required",
             )
 
         if "session_id_token" not in request.session:
             return HttpResponseRedirect(
-                f"{failure_url}?{urlencode({'error': 'id_token is missing from the session, cannot logout'})}"
+                f"{failure_url}?{urlencode({'error': 'id_token is missing from the session, cannot logout'})}",
             )
 
         id_token: str = request.session["session_id_token"]
         return self.logout(request, id_token, next_url, failure_url)
 
     def logout(
-        self, request: HttpRequest, id_token: str, next_url: str, failure_url: str
+        self,
+        request: HttpRequest,
+        id_token: str,
+        next_url: str,
+        failure_url: str,
     ) -> HttpResponseRedirect:
         end_session_url: str = conf.KC_UTILS_OIDC_END_SESSION_URL
 
@@ -198,7 +207,7 @@ class LogoutView(View):
         logout_params: dict[str, typing.Any] = {
             "id_token_hint": id_token,
             "post_logout_redirect_uri": request.build_absolute_uri(
-                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME)
+                reverse(conf.KC_UTILS_OIDC_CALLBACK_URL_NAME),
             ),
             "state": state,
         }
@@ -220,7 +229,8 @@ class AdminRedirectView(RedirectView):
         """
         oidc_url: str = reverse(conf.KC_UTILS_OIDC_AUTHENTICATE_URL_NAME)
         next_url: str = self.request.GET.get(
-            conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME, reverse("admin:index")
+            conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME,
+            reverse("admin:index"),
         )
         fail_url: str = reverse(conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME)
 
@@ -246,7 +256,7 @@ class DjangoAdminLoginView(AdminRedirectView):
                 msg: str = (
                     f"You are authenticated as {self.request.user.username}, "
                     f"but are not authorized to access this page."
-                    )
+                )
                 url: str = reverse(conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME)
                 return f"{url}?error={msg}"
 
@@ -268,9 +278,9 @@ class DjangoAdminLogoutView(AdminRedirectView):
                 {
                     conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME: self.get_url(),
                     conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME: reverse(
-                        conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME
+                        conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME,
                     ),
-                }
+                },
             )
             logout_url: str = f"{reverse(conf.KC_UTILS_OIDC_LOGOUT_URL_NAME)}?{params}"
             return logout_url

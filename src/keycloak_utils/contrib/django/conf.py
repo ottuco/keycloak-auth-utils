@@ -1,6 +1,5 @@
 from django.conf import settings
 
-
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")
 KC_UTILS_KC_REALM: str = getattr(settings, "KC_UTILS_KC_REALM", "")
 KC_UTILS_KC_ALGORITHMS: list[str] = getattr(
@@ -91,3 +90,23 @@ KC_UTILS_USER_SUPERADMIN_ROLE: str = getattr(
     "KC_UTILS_USER_SUPERADMIN_ROLE",
     "super_admin",
 )
+
+KC_UTILS_KC_SERVER_URL: str = getattr(
+    settings,
+    "KC_UTILS_KC_SERVER_URL",
+    "https://sso.ottu.dev/auth/",
+)
+KC_UTILS_KC_REALM: str = getattr(settings, "KC_UTILS_KC_REALM", "")
+
+KC_UTILS_KC_ADMIN_USER: str = getattr(settings, "KC_UTILS_KC_ADMIN_USER", "")
+KC_UTILS_KC_ADMIN_PASSWORD: str = getattr(settings, "KC_UTILS_KC_ADMIN_PASSWORD", "")
+
+KC_UTILS_KC_ADMIN_REALM: str = getattr(settings, "KC_UTILS_KC_ADMIN_REALM", "master")
+KC_UTILS_KC_ADMIN_ID: str = getattr(settings, "KC_UTILS_KC_ADMIN_ID", "admin-cli")
+
+KC_UTILS_KC_CLIENT_ID: str = getattr(settings, "KC_UTILS_KC_CLIENT_ID", "core")
+KC_UTILS_KC_CLIENT_SECRET: str = getattr(settings, "KC_UTILS_KC_CLIENT_SECRET", "")
+
+KC_UTILS_CREATE_QUEUES: dict = getattr(settings, "KC_UTILS_CREATE_QUEUES", {})
+KC_UTILS_CONSUMER_QUEUES: dict = getattr(settings, "KC_UTILS_CONSUMER_QUEUES", {})
+RABBITMQ_URL: str = getattr(settings, "RABBITMQ_URL", "")
