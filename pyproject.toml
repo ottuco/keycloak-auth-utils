@@ -55,8 +55,9 @@ fastapi = ["fastapi>=0.68.0"]
 celery = ["celery>=5.4.0"]
 
 django-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
+fastapi-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
 
-all = ["keycloak-utils[django,fastapi]"]
+all = ["keycloak-utils[django,fastapi,celery]"]
 
 fastapi-test = ["httpx"]
 test = [
