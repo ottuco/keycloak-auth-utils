@@ -199,12 +199,12 @@ class EventStrategy(ABC):
         ):
             return
         user = event_data["operation_information"]
-        payout_roles = (
+        roles = (
             user["roles"].get(self.ms_name, [])
             if isinstance(user["roles"], dict)
             else []
         )
-        roles_names = [role["name"] for role in payout_roles]
+        roles_names = [role["name"] for role in roles]
         timezone = next(
             (
                 attr["timezone"]
