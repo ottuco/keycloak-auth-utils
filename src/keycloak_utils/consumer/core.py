@@ -5,7 +5,6 @@ from typing import Dict, List
 
 import msgpack
 import pika
-from celery.bin.amqp import exchange_declare
 from pika.adapters.select_connection import SelectConnection
 from pika.channel import Channel
 from pika.exceptions import (
@@ -305,16 +304,27 @@ class EventConsumer(EventHandler):
         Raises:
             Exception: Reraises any unhandled exception to ensure proper handling upstream.
         """
+        from ..contrib.django import conf as settings
+
         routing_key = method.routing_key.replace("-dlx", "")
+        x_death = properties.headers.get("x-death", []) if properties.headers else []
+
         try:
-            x_death = (
-                properties.headers.get("x-death", []) if properties.headers else []
-            )
             if x_death and isinstance(x_death, list):
                 details = x_death[0]
                 reason = details.get("reason", "unknown")
                 original_queue = details.get("queue", "unknown")
                 count = details.get("count", 0)
+                max_retries = settings.KC_UTILS_MESSAGE_MAX_RETRIES
+                if count > max_retries:
+                    logger.warning(
+                        "Message %s Disposed from the eventbus, Reason %s",
+                        self.decode_event(body),
+                        reason,
+                    )
+                    channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                    return
+
                 logger.info(
                     "Message dead-lettered. Reason: %s, Original Queue: %s, Retry Count: %d",
                     reason,
@@ -535,8 +545,6 @@ class EventConsumer(EventHandler):
                 queue=dlx_queue,
                 durable=True,
                 arguments={
-                    "x-dead-letter-exchange": self.dlx_exchange + "-dlx",
-                    "x-dead-letter-routing-key": routing_key,
                     "x-message-ttl": self.dlx_ttl,
                 },
                 callback=callback,

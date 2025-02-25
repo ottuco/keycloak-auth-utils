@@ -110,3 +110,7 @@ KC_UTILS_KC_CLIENT_SECRET: str = getattr(settings, "KC_UTILS_KC_CLIENT_SECRET", 
 KC_UTILS_CREATE_QUEUES: dict = getattr(settings, "KC_UTILS_CREATE_QUEUES", {})
 KC_UTILS_CONSUMER_QUEUES: dict = getattr(settings, "KC_UTILS_CONSUMER_QUEUES", {})
 RABBITMQ_URL: str = getattr(settings, "RABBITMQ_URL", "")
+
+KC_UTILS_MESSAGE_MAX_RETRIES: int = getattr(
+    settings, "KC_UTILS_MESSAGE_MAX_RETRIES", 10
+)
