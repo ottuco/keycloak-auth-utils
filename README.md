@@ -283,20 +283,20 @@ These environment variables are required for integrating Keycloak utilities into
 
 ### **Key Configuration Variables**
 
-| Environment Variable           | Default Value              | Description                                                                                                   |
-|--------------------------------|----------------------------|---------------------------------------------------------------------------------------------------------------|
+| Environment Variable           | Default Value             | Description                                                                                                   |
+|--------------------------------|---------------------------|---------------------------------------------------------------------------------------------------------------|
 | `KC_UTILS_KC_SERVER_URL`       | `https://sso.ottu.dev/auth/` | The base URL of the Keycloak server. Required for making API requests.                                        |
-| `KC_UTILS_KC_REALM`            | `syncertest.ottu.dev`      | The realm used to manage users, groups, and roles.                                                            |
-| `KC_UTILS_KC_CLIENT_ID`        | `payout`                   | The client ID registered in the Keycloak realm.                                                               |
-| `KC_UTILS_KC_CLIENT_SECRET`    | ``                         | The client secret used for authentication.                                                                    |
-| `KC_UTILS_KC_ADMIN_USER`       | ``                         | Admin username for Keycloak.                                                                                  |
-| `KC_UTILS_KC_ADMIN_PASSWORD`   | ``                         | Admin password for authentication.                                                                            |
-| `KC_UTILS_KC_ADMIN_REALM`      | `master`                   | The admin realm where management operations are performed.                                                    |
-| `KC_UTILS_KC_ADMIN_ID`         | `admin-cli`                | The admin client ID used for administrative tasks.                                                            |
-| `RABBITMQ_URL`                 | ``                         | The RabbitMQ url.                                                                                             |
-| `KC_UTILS_CREATE_QUEUES`       | `{}`                       | The dictionary of queues that needs to be created keys are types, values are lists of queue names.            |
-| `KC_UTILS_CONSUMER_QUEUES`     | `{}`                       | The dictionary of queues that needs to be created and synced keys are types, values are lists of queue names. |
-| `KC_UTILS_MESSAGE_MAX_RETRIES` | ``                         | Integer defining the maximum rertries of a failed message before discpose, defaults to `10`                     |
+| `KC_UTILS_KC_REALM`            | `syncertest.ottu.dev`     | The realm used to manage users, groups, and roles.                                                            |
+| `KC_UTILS_KC_CLIENT_ID`        | `payout`                  | The client ID registered in the Keycloak realm.                                                               |
+| `KC_UTILS_KC_CLIENT_SECRET`    | ``                        | The client secret used for authentication.                                                                    |
+| `KC_UTILS_KC_ADMIN_USER`       | ``                        | Admin username for Keycloak.                                                                                  |
+| `KC_UTILS_KC_ADMIN_PASSWORD`   | ``                        | Admin password for authentication.                                                                            |
+| `KC_UTILS_KC_ADMIN_REALM`      | `master`                  | The admin realm where management operations are performed.                                                    |
+| `KC_UTILS_KC_ADMIN_ID`         | `admin-cli`               | The admin client ID used for administrative tasks.                                                            |
+| `RABBITMQ_URL`                 | ``                        | The RabbitMQ url.                                                                                             |
+| `KC_UTILS_CREATE_QUEUES`       | `{}`                      | The dictionary of queues that needs to be created keys are types, values are lists of queue names.            |
+| `KC_UTILS_CONSUMER_QUEUES`     | `{}`                      | The dictionary of queues that needs to be created and synced keys are types, values are lists of queue names. |
+| `KC_UTILS_MESSAGE_MAX_RETRIES` | `10`                      | Integer defining the maximum rertries of a failed message before discpose, defaults to `10`                   |
 
 ### **Why These Settings Are Necessary**
 
@@ -306,6 +306,11 @@ These environment variables are required for integrating Keycloak utilities into
 - **`KC_UTILS_KC_ADMINRABBITMQ_URL_*`:** These settings provide administrative access to manage users, roles, and permissions in the Keycloak server.
 
 ---
+
+### **Installed Apps Configurations**
+
+`"keycloak_utils.contrib.django"` should be added to the list of shared installed apps in order to be able to use the predefined commands directly.
+
 
 ## **Usage Examples**
 
@@ -704,11 +709,11 @@ KC_UTILS_CONSUMER_QUEUES = env.dict(
 ##### c. override queue_reg in consumer class
 for create queues
 ```bash
-python manage.py run_consumer --general-queues testdemo --payment-queues paymenttestdemo --user-queues userstestdemo testdemo
+python manage.py run_consumer --general-queues testdemo --payment-queues paymenttestdemo --users-queues userstestdemo testdemo
 ```
 for consumer queues add consumer to the option eg:
 ```bash
-python manage.py run_consumer --user-consumer-queues userstestdemo testdemo
+python manage.py run_consumer --users-consumer-queues userstestdemo testdemo
 ```
 
 #### **example command:**
