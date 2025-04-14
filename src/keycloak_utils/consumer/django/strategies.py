@@ -1,11 +1,13 @@
 import logging
 from abc import ABC, abstractmethod
+from functools import wraps
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
+from django.db import connection
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
 from ...sync.kc_admin import kc_admin
@@ -14,10 +16,40 @@ logger = logging.getLogger("keycloak_event_consumer")
 User = get_user_model()
 
 
+def schema_based(func, schema):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        from django_tenants.utils import get_tenant_model
+
+        TenantModel = get_tenant_model()
+        if (
+            not TenantModel.objects.filter(schema_name=schema).exists()
+            and schema != "public"
+        ):
+            raise RuntimeError(
+                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema."
+            )
+
+        connection.set_schema(schema)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            connection.set_schema_to_public()
+
+    return wrapper
+
+
 class EventStrategy(ABC):
     ms_name: str = KC_UTILS_KC_CLIENT_ID
 
-    def process(self, event_data: Dict, operation_type: str, event_type: str):
+    def process(
+        self,
+        event_data: Dict,
+        operation_type: str,
+        event_type: str,
+        tenant_schema: Optional[str] = None,
+        is_custom_schema: bool = False,
+    ):
         """
         Processes an event based on its data, operation type, and event type.
 
@@ -25,18 +57,28 @@ class EventStrategy(ABC):
             event_data (Dict): The event data containing operation information.
             operation_type (str): The type of operation (e.g., 'CREATE', 'UPDATE', 'DELETE').
             event_type (str): The type of event (e.g., 'Permission', 'Role', 'User').
+            tenant_schema (Optional[str]): The tenant schema to use for multi-tenant operations.
+            is_custom_schema (bool): Whether or not to use the default schema handling.
 
         Functionality:
             - Validates the event data.
             - Retrieves the event information based on the event type.
             - Executes the corresponding operation strategy (CREATE, UPDATE, DELETE).
+            - If tenant_schema is provided, executes within that schema context.
         """
         if not self._validate_event(event_data) or not (
             event_info := self._get_event_info(event_data["data"], event_type)
         ):
             return
+
         operation_strategy = self._get_operation_strategy(operation_type)
-        operation_strategy(*event_info)
+
+        # If tenant_schema is provided, wrap the operation strategy with schema_based
+        if tenant_schema and not is_custom_schema:
+            logger.info(f"Processing event in tenant schema: {tenant_schema}")
+            schema_based(lambda: operation_strategy(*event_info), tenant_schema)()
+        else:
+            operation_strategy(*event_info, tenant_schema=tenant_schema)
 
     def _validate_event(self, event_data: Dict) -> bool:
         """
@@ -88,18 +130,15 @@ class EventStrategy(ABC):
         """
         return ContentType.objects.get_for_model(model)
 
-    @staticmethod
-    def _handle_groups(roles: List):
+    def _handle_groups(self, roles: List):
         """
         Handles the creation or retrieval of user groups based on roles.
 
         Args:
             roles (List): A list of roles to be converted into groups.
         """
-        from django.contrib.auth.models import Group
-
         for group_name in roles:
-            group, created = Group.objects.get_or_create(name=group_name)
+            group, created = self.group_model.objects.get_or_create(name=group_name)
             if created:
                 logger.info(f"Group '{group_name}' created successfully")
             else:
@@ -115,7 +154,7 @@ class EventStrategy(ABC):
         """
         logger.warning(f"Unknown operation")
 
-    def _get_event_info(self, event_data: Dict, event_type: str) -> Optional[Dict]:
+    def _get_event_info(self, event_data: Dict, event_type: str) -> Optional[List]:
         """
         Retrieves event information based on the event type.
 
@@ -217,13 +256,13 @@ class EventStrategy(ABC):
         return user, roles_names, timezone, is_superuser
 
     @abstractmethod
-    def _handle_create(self, *args) -> None: ...
+    def _handle_create(self, *args, **kwargs) -> None: ...
 
     @abstractmethod
-    def _handle_update(self, *args) -> None: ...
+    def _handle_update(self, *args, **kwargs) -> None: ...
 
     @abstractmethod
-    def _handle_delete(self, *args) -> None: ...
+    def _handle_delete(self, *args, **kwargs) -> None: ...
 
     def _get_operation_strategy(self, operation_type: str) -> Callable:
         """
@@ -245,6 +284,18 @@ class EventStrategy(ABC):
         }
         return strategies.get(operation_type, self._handle_default)
 
+    @property
+    def group_model(self):
+        return Group
+
+    @property
+    def permission_model(self):
+        return Permission
+
+    @property
+    def user_model(self):
+        return User
+
 
 class RoleEventStrategy(EventStrategy):
     """
@@ -258,7 +309,7 @@ class RoleEventStrategy(EventStrategy):
         super().__init__()
         # self.kc_role = KeycloakRole()  # Placeholder for keycloak role handling
 
-    def _handle_create(self, group_name: str, role_id: str):
+    def _handle_create(self, group_name: str, role_id: str, **kwargs):
         """
         Handles the creation of a group.
 
@@ -271,19 +322,19 @@ class RoleEventStrategy(EventStrategy):
             Error: If the group creation fails.
         """
         try:
-            group = Group.objects.create(name=group_name)
+            group = self.group_model.objects.create(name=group_name)
             logger.info(f"created group {group}")
             # self.kc_role.get_or_create_policy(group, role_id)  # Placeholder for policy creation
         except Exception as e:
             logger.error(f"Error creating group {group_name}: {e}")
 
-    def _handle_update(self):
+    def _handle_update(self, **kwargs):
         """
         Placeholder method for handling updates on groups.
         """
         pass
 
-    def _handle_delete(self, group_name: str, role_id: str):
+    def _handle_delete(self, group_name: str, role_id: str, **kwargs):
         """
         Handles the deletion of a group.
 
@@ -296,7 +347,7 @@ class RoleEventStrategy(EventStrategy):
             Error: If the group deletion fails.
         """
         try:
-            group = Group.objects.get(name=group_name)
+            group = self.group_model.objects.get(name=group_name)
             # self.kc_role.delete_policy(group)  # Placeholder for policy deletion
             group.delete()
             logger.info(f"group {group_name} deleted")
@@ -310,11 +361,7 @@ class UserEventStrategy(EventStrategy):
     """
 
     def _handle_create(
-        self,
-        kc_user: Dict,
-        roles: List,
-        timezone: str,
-        is_superuser: bool,
+        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool, **kwargs
     ):
         """
         Handles the creation of a new user.
@@ -329,7 +376,7 @@ class UserEventStrategy(EventStrategy):
             Info: Successfully created a new user with the provided details.
             Error: If user creation fails.
         """
-        user = User.objects.create(
+        user = self.user_model.objects.create(
             username=kc_user["username"],
             first_name=kc_user["firstName"],
             last_name=kc_user["lastName"],
@@ -339,11 +386,7 @@ class UserEventStrategy(EventStrategy):
         logger.info(f"created user {user}")
 
     def _handle_update(
-        self,
-        kc_user: Dict,
-        roles: List,
-        timezone: str,
-        is_superuser: bool,
+        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool, **kwargs
     ):
         """
         Handles the update of an existing user.
@@ -364,9 +407,9 @@ class UserEventStrategy(EventStrategy):
             ("kc_id", kc_user["user_id"]),
         ]:
             try:
-                user = User.objects.get(**{field: value})
+                user = self.user_model.objects.get(**{field: value})
                 break
-            except User.DoesNotExist:
+            except self.user_model.DoesNotExist:
                 logger.info(f"User not found by {field}: '{value}'")
                 continue
 
@@ -383,12 +426,12 @@ class UserEventStrategy(EventStrategy):
         user.email = kc_user["email"]
         setattr(user, "timezone", timezone)
         user.is_superuser = is_superuser
-        user_groups = Group.objects.filter(name__in=roles)
+        user_groups = self.group_model.objects.filter(name__in=roles)
         user.groups.set(user_groups)
         user.save()
         logger.info(f"user {kc_user['username']} updated")
 
-    def _handle_delete(self, *args):
+    def _handle_delete(self, *args, **kwargs):
         """
         Placeholder method for handling the deletion of a user.
         """
@@ -425,6 +468,7 @@ class PermissionEventStrategy(EventStrategy):
         permission_codename: str,
         permission_model: str,
         groups_names: List[str],
+        **kwargs,
     ):
         """
         Handles the creation of a new permission for a specific model and codename.
@@ -456,7 +500,7 @@ class PermissionEventStrategy(EventStrategy):
             logger.error(e)
             return
 
-        permission, created = Permission.objects.get_or_create(
+        permission, created = self.permission_model.objects.get_or_create(
             content_type=content_type,
             codename=permission_codename,
         )
@@ -474,6 +518,7 @@ class PermissionEventStrategy(EventStrategy):
         permission_codename: str,
         permission_model: str,
         groups_names: List[str],
+        **kwargs,
     ):
         """
         Handles the update of an existing permission.
@@ -492,11 +537,11 @@ class PermissionEventStrategy(EventStrategy):
         )
 
         try:
-            permission = Permission.objects.get(
+            permission = self.permission_model.objects.get(
                 codename=permission_codename,
                 content_type__app_label=permission_app,
             )
-        except Permission.DoesNotExist:
+        except self.permission_model.DoesNotExist:
             logger.info(f"Permission {permission_codename} is not registered")
             return
 
@@ -517,10 +562,14 @@ class PermissionEventStrategy(EventStrategy):
         Logs:
             Info: Success or failure of adding/removing the permission from groups.
         """
-        add_perm_groups = Group.objects.filter(name__in=groups_names).exclude(
+        add_perm_groups = self.group_model.objects.filter(
+            name__in=groups_names
+        ).exclude(
             permissions=permission,
         )
-        remove_perm_groups = Group.objects.filter(permissions=permission).exclude(
+        remove_perm_groups = self.group_model.objects.filter(
+            permissions=permission
+        ).exclude(
             name__in=groups_names,
         )
 
@@ -548,7 +597,7 @@ class PermissionEventStrategy(EventStrategy):
         else:
             logger.info("No groups need this permission added.")
 
-    def _handle_delete(self):
+    def _handle_delete(self, *args, **kwargs):
         """
         Placeholder method for handling the deletion of a permission.
         """

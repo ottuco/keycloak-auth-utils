@@ -3,7 +3,6 @@ import signal
 import sys
 
 from django.core.management.base import BaseCommand
-
 from keycloak_utils.consumer.core import EventConsumer
 
 logger = logging.getLogger("keycloak_event_consumer")
@@ -50,6 +49,18 @@ class Command(BaseCommand):
             default=[],
             help="Space-separated list of general queues (e.g., general_queue1 general_queue2).",
         )
+        parser.add_argument(
+            "-tenant-based",
+            action="store_true",
+            default=False,
+            help="Enable tenant-based processing of events.",
+        )
+        parser.add_argument(
+            "-custom-schema",
+            action="store_true",
+            default=False,
+            help="Use custom schema handling for multi-tenancy.",
+        )
 
     def handle(self, *args, **options):
         create_queues = {
@@ -64,8 +75,10 @@ class Command(BaseCommand):
             "general": options["general_consumer_queues"],
         }
 
-        consumer = EventConsumer()
-
+        consumer = EventConsumer(
+            tenant_based=options.get("tenant_based", False),
+            is_custom_schema=options.get("custom_schema", False),
+        )
         consumer.register_queue(create_queues, queue_status="create")
         consumer.register_queue(consumer_queues, queue_status="sync")
 

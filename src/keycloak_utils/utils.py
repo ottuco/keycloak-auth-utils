@@ -1,5 +1,9 @@
 import jwt
+from functools import wraps
+from django.db import connection
+from django_tenants.utils import get_tenant_model
 
+from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
 from .errors import JWTDecodeError
 
 
@@ -21,3 +25,25 @@ def verify_token(
         )
     except jwt.InvalidTokenError as e:
         raise JWTDecodeError(str(e))
+
+
+def schema_based(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        schema = KC_UTILS_TENANT_SCHEMA
+        TenantModel = get_tenant_model()
+        if (
+            not TenantModel.objects.filter(schema_name=schema).exists()
+            and schema != "public"
+        ):
+            raise RuntimeError(
+                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema."
+            )
+
+        connection.set_schema(schema)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            connection.set_schema_to_public()
+
+    return wrapper
