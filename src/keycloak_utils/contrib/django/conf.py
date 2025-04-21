@@ -114,3 +114,5 @@ RABBITMQ_URL: str = getattr(settings, "RABBITMQ_URL", "")
 KC_UTILS_MESSAGE_MAX_RETRIES: int = getattr(
     settings, "KC_UTILS_MESSAGE_MAX_RETRIES", 10
 )
+
+KC_UTILS_TENANT_SCHEMA: str = getattr(settings, "KC_UTILS_TENANT_SCHEMA", "public")

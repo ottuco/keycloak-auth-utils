@@ -543,6 +543,9 @@ class KeycloakSync:
 
         return wrapper
 
+    def filter_qs(self, model):
+        return model.objects.all()
+
 
 @dataclass
 class KeycloakPermission(KeycloakSync):
@@ -794,9 +797,6 @@ class KeycloakPermission(KeycloakSync):
             except Exception as e:
                 logger.error(f"Error processing permission '{permission}': {e}")
                 raise e
-
-    def filter_qs(self, model):
-        return model.objects.all()
 
 
 @dataclass

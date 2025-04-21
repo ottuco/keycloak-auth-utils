@@ -72,6 +72,8 @@ class EventStrategy(ABC):
             return
 
         operation_strategy = self._get_operation_strategy(operation_type)
+        if operation_strategy is None:
+            return
 
         # If tenant_schema is provided, wrap the operation strategy with schema_based
         if tenant_schema and not is_custom_schema:
@@ -145,14 +147,14 @@ class EventStrategy(ABC):
                 logger.info(f"Group '{group_name}' already exists")
 
     @staticmethod
-    def _handle_default(*args):
+    def _handle_default(operations_type, *args, **kwargs):
         """
         Handles unknown operations by logging a warning.
 
         Args:
             *args: Any additional arguments.
         """
-        logger.warning(f"Unknown operation")
+        logger.warning(f"Unknown operation *{operations_type}*")
 
     def _get_event_info(self, event_data: Dict, event_type: str) -> Optional[List]:
         """
@@ -274,7 +276,7 @@ class EventStrategy(ABC):
         Returns:
             Callable: The function that handles the operation type.
         """
-
+        operation_type = operation_type.upper()
         if operation_type == "ASSIGN":
             operation_type = "CREATE"
         strategies = {
@@ -282,7 +284,7 @@ class EventStrategy(ABC):
             "UPDATE": self._handle_update,
             "DELETE": self._handle_delete,
         }
-        return strategies.get(operation_type, self._handle_default)
+        return strategies.get(operation_type) or self._handle_default(operation_type)
 
     @property
     def group_model(self):
