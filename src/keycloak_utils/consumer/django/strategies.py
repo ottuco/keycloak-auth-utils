@@ -200,11 +200,13 @@ class EventStrategy(ABC):
                 permission_model,
                 groups,
             )
-        except KeyError as ke:
+        except (IndexError, KeyError):
             logger.error(
-                f"the permission info {permission_info} is not formatted correctly, the format should be app.model.codename",
+                f"Permission not registered: the permission info {permission_info} is not formatted correctly, the format should be app.model.codename",
             )
-            raise ke
+
+        except Exception as e:
+            logger.error(f"Permission not registered: exception {e} occurred")
 
     def _get_role_info(self, event_data: Dict) -> Optional[Tuple]:
         """

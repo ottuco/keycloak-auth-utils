@@ -26,10 +26,6 @@ def verify_token(
         raise JWTDecodeError(str(e))
 
 
-from django.db import connection
-from functools import wraps
-
-
 def schema_based(func):
     @wraps(func)
     def wrapper(*args, **kwargs):

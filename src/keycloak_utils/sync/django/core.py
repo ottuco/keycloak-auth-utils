@@ -790,7 +790,7 @@ class KeycloakPermission(KeycloakSync):
             try:
                 scope = self.create_kc_scope(permission)
                 self.add_kc_scope_to_resource(scope)
-                # self.create_kc_permission(permission)
+                self.create_kc_permission(permission)
             except ValueError as ve:
                 logger.error(f"Skipping invalid permission: {ve}")
                 continue
