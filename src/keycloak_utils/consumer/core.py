@@ -30,14 +30,18 @@ class EventHandler:
     """
 
     @staticmethod
-    def process_message(event_data: Dict) -> bool:
+    def process_message(
+        event_data: Dict, tenant_based: bool = False, is_custom_schema: bool = False
+    ) -> bool:
         """
         Processes an event message by determining its event and operation type,
         and invoking the appropriate strategy to handle it.
 
         Args:
             event_data (Dict): The event data containing event type, operation type,
-            and operation information.
+                and operation information.
+            tenant_based (bool): Whether to use tenant-specific schema for processing.
+            is_custom_schema (bool): Whether to use custom schema handling for non defualt tenancy dbs.
 
         Returns:
             bool: True if the event is successfully processed, False otherwise.
@@ -50,6 +54,7 @@ class EventHandler:
             event_data.get("data", {}).get("operation_type", "").split(".")[0]
         )
         event_type = event_data.get("data", {}).get("operation_type", "").split(".")[1]
+        tenant_schema = event_data.get("data", {}).get("Realm_Name", "public")
 
         if (
             "user_id" in event_data["data"].get("operation_information", {}).keys()
@@ -69,7 +74,15 @@ class EventHandler:
             logger.warning(e)
             return False
 
-        strategy.process(event_data, operation_type, event_type)
+        tenant_schema = tenant_schema if tenant_based else None
+
+        strategy.process(
+            event_data,
+            operation_type,
+            event_type,
+            tenant_schema=tenant_schema,
+            is_custom_schema=is_custom_schema,
+        )
         return True
 
 
@@ -79,10 +92,13 @@ class EventConsumer(EventHandler):
     Manages connections, queue registration, and message handling routines.
     """
 
-    def __init__(self):
+    def __init__(self, tenant_based=False, is_custom_schema=False):
         """
         Initializes EventConsumer with RabbitMQ connection parameters,
         queue registry, and retry mechanism.
+
+        Args:
+            tenant_based (bool): Whether to use tenant-specific schema for processing.
         """
         self.connection = None
         self.channel = None
@@ -97,6 +113,8 @@ class EventConsumer(EventHandler):
         self.publish_channel = None
         self._retry_attempt = 0
         self.max_retries = 10
+        self.tenant_based = tenant_based
+        self.is_custom_schema = is_custom_schema
 
     class QueueRegistry:
         """
@@ -278,12 +296,16 @@ class EventConsumer(EventHandler):
             body: Message body.
         """
         event_data = self.decode_event(body)
-        processed = self.process_message(event_data)
+        processed = self.process_message(
+            event_data,
+            tenant_based=self.tenant_based,
+            is_custom_schema=self.is_custom_schema,
+        )
 
         if processed:
             channel.basic_ack(delivery_tag=method.delivery_tag)
         else:
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     def dlx_handle_message(
         self,

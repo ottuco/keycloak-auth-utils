@@ -499,6 +499,14 @@ class KeycloakSync:
         """
         # Implementation goes here...
 
+    @property
+    def group_model(self):
+        return Group
+
+    @property
+    def permission_model(self):
+        return Permission
+
     @abstractmethod
     def run_routine(self) -> None:
         """
@@ -534,6 +542,9 @@ class KeycloakSync:
             return kc_obj
 
         return wrapper
+
+    def filter_qs(self, model):
+        return model.objects.all()
 
 
 @dataclass
@@ -577,7 +588,7 @@ class KeycloakPermission(KeycloakSync):
         if self.desired_models_perms_map:
             return
 
-        for perm in Permission.objects.all():
+        for perm in self.permission_model.objects.all():
             content_type = perm.content_type
             perm_key = f"{content_type.app_label}.{content_type.model}"
             base_perm = perm.codename.split("_")[0]
@@ -599,7 +610,7 @@ class KeycloakPermission(KeycloakSync):
             app_label, model = model_name.split(".")
             apps.get_model(app_label, model)
 
-            if not Permission.objects.filter(content_type__model=model):
+            if not self.permission_model.objects.filter(content_type__model=model):
                 logger.warning(
                     f"Model '{model_name}' does not have associated permissions.",
                 )
@@ -677,8 +688,8 @@ class KeycloakPermission(KeycloakSync):
                 continue
 
             app_label, model = model_name.split(".")
-            permissions = Permission.objects.filter(content_type__model=model)
-
+            permissions_qs = self.filter_qs(self.permission_model)
+            permissions = permissions_qs.filter(content_type__model=model)
             self.create_kc_resource(model_name)
             filtered_permissions = self._model_registered_perms_generator(
                 model_name,
@@ -779,7 +790,7 @@ class KeycloakPermission(KeycloakSync):
             try:
                 scope = self.create_kc_scope(permission)
                 self.add_kc_scope_to_resource(scope)
-                # self.create_kc_permission(permission)
+                self.create_kc_permission(permission)
             except ValueError as ve:
                 logger.error(f"Skipping invalid permission: {ve}")
                 continue
@@ -798,7 +809,7 @@ class KeycloakRole(KeycloakSync):
         Internal method to create a generator that fetches all Group objects from Django.
         Yields: Group objects.
         """
-        groups = Group.objects.all()
+        groups = self.filter_qs(self.group_model)
         yield from groups
 
     @KeycloakSync.store_kc_id
@@ -817,7 +828,7 @@ class KeycloakRole(KeycloakSync):
 
     def get_or_create_policy(self, group: Group, role_id: str = None):
         """
-        Retrieves or creates a policy based on the provided Group.
+        Retrieves or creates a policy based on the provided self.group_model.
         If role_id is provided, updates the current_role.
         Args:
             group: The Group object to sync with Keycloak.
@@ -846,7 +857,7 @@ class KeycloakRole(KeycloakSync):
 
     def add_policies_to_permissions(self, group: Group) -> None:
         """
-        Associates policies with permissions for the given Group.
+        Associates policies with permissions for the given self.group_model.
         Args:
             group: The Group object to associate policies with permissions.
         """
@@ -924,7 +935,8 @@ class KeycloakUser(KeycloakSync):
         Internal method to create a generator that fetches all User objects from Django.
         Yields: User objects.
         """
-        users = User.objects.all()
+
+        users = self.filter_qs(User)
         yield from users
 
     @KeycloakSync.store_kc_id
