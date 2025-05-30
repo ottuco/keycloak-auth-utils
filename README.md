@@ -531,7 +531,7 @@ python manage.py sync_keycloak \
     -migrate-groups \
     -migrate-users \
     -migrate-base \
-    -migrate-permissions
+    -migrate-permissions 
 ```
 
 
@@ -540,6 +540,7 @@ python manage.py sync_keycloak \
 - `-migrate-groups`: Synchronize Keycloak roles to Django groups.
 - `-migrate-users`: Migrate users from Django to Keycloak.
 - `-migrate-permissions`: Migrate permissions from Django to Keycloak.
+- `-delegate-celery`: Delegates the task to a celery worker
 - `--realm-name`: Specify the Keycloak realm to operate on.
 - `--clients`: Specify the clients that needs to be created noting that core and frontend are created by default
 
