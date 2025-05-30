@@ -1,8 +1,6 @@
 import jwt
 from functools import wraps
-from django.db import connection
 
-from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
 from .errors import JWTDecodeError
 
 
@@ -23,17 +21,19 @@ def verify_token(
             audience=audience,
         )
     except jwt.InvalidTokenError as e:
-        raise JWTDecodeError(str(e))
+        raise JWTDecodeError(str(e)) from e
 
 
 def schema_based(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
+        from django.db import connection
+        from django_tenants.utils import get_tenant_model
+
         is_postgres = connection.vendor == "postgresql"
         if not is_postgres:
             return func(*args, **kwargs)
-
-        from django_tenants.utils import get_tenant_model
 
         schema = KC_UTILS_TENANT_SCHEMA
         TenantModel = get_tenant_model()
