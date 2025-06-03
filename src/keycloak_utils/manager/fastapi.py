@@ -13,8 +13,12 @@ class AsyncFastAPIKeyManager:
     ttl: int = 60 * 60 * 24  # 1 day
     host: str
     realm: str
-    _cache: dict = {}
-    _cache_lock = asyncio.Lock()
+    def __init__(self, host: typing.Optional[str] = None, realm: typing.Optional[str] = None):
+        self.host = host or ""
+        self.realm = realm or ""
+        self._cache_key = f"keycloak_public_key_{self.realm}"
+        self._cache: dict = {}
+        self._cache_lock = asyncio.Lock()
 
     def __init__(self, host: typing.Optional[str] = None, realm: typing.Optional[str] = None):
         self.host = host or ""
