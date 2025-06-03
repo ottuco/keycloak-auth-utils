@@ -1,7 +1,7 @@
 import asyncio
 import typing
 
-import aiohttp
+import httpx
 
 from ..errors import PublicKeyNotFound
 from .base import BasePublicKeyManager
@@ -26,22 +26,21 @@ class AsyncFastAPIKeyManager:
         return f"https://{self.host}/auth/realms/{self.realm}"
 
     async def get_fresh_key_from_upstream(self) -> str:
-        """Fetch the public key from Keycloak using ``aiohttp``."""
+        """Fetch the public key from Keycloak using ``httpx``."""
 
-        timeout = aiohttp.ClientTimeout(total=10)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(self.url_realm) as response:
-                    if response.status != 200:
-                        msg = (
-                            f"Public key for Keycloak realm `{self.realm}` not found. "
-                            f"Status: {response.status}"
-                        )
-                        raise PublicKeyNotFound(msg)
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(self.url_realm)
+                if response.status_code != 200:
+                    msg = (
+                        f"Public key for Keycloak realm `{self.realm}` not found. "
+                        f"Status: {response.status_code}"
+                    )
+                    raise PublicKeyNotFound(msg)
 
-                    data = await response.json()
-                    return data.get("public_key")
-        except aiohttp.ClientError as e:
+                data = response.json()
+                return data.get("public_key")
+        except httpx.RequestError as e:
             raise PublicKeyNotFound(f"Failed to fetch public key: {str(e)}") from e
         except asyncio.TimeoutError:
             raise PublicKeyNotFound(f"Timeout fetching public key from {self.url_realm}")
