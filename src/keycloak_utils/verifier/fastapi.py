@@ -1,5 +1,7 @@
 import typing
 
+from asgiref.sync import sync_to_async
+
 from ..manager.fastapi import AsyncFastAPIKeyManager, FastAPIKeyManager
 from ..utils import verify_token
 from .base import BaseTokenVerifier
@@ -27,7 +29,7 @@ class AsyncFastAPITokenVerifier:
         """Verify the token asynchronously using the public key."""
 
         public_key = await self.manager.get_key(force=force)
-        return verify_token(
+        return await sync_to_async(verify_token)(
             access_token=self.access_token,
             public_key=public_key,
             algorithms=self.algorithms,
