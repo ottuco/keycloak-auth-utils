@@ -4,17 +4,11 @@ import typing
 import httpx
 
 from ..errors import PublicKeyNotFound
-from .base import BasePublicKeyManager
+from .base import BaseAsyncPublicKeyManager, BasePublicKeyManager
 
 
-class AsyncFastAPIKeyManager:
+class AsyncFastAPIKeyManager(BaseAsyncPublicKeyManager):
     """Asynchronous public key manager for FastAPI."""
-
-    ttl: int = 60 * 60 * 24  # 1 day
-    host: str
-    realm: str
-    _cache: dict = {}
-    _cache_lock = asyncio.Lock()
 
     def __init__(
         self,
@@ -22,9 +16,7 @@ class AsyncFastAPIKeyManager:
         realm: typing.Optional[str] = None,
         ttl: typing.Optional[int] = None,
     ) -> None:
-        self.host = host or ""
-        self.realm = realm or ""
-        self._cache_key = f"keycloak_public_key_{self.realm}"
+        super().__init__(host=host, realm=realm)
         if ttl is not None:
             self.ttl = ttl
 
@@ -58,43 +50,6 @@ class AsyncFastAPIKeyManager:
             raise PublicKeyNotFound(
                 f"Timeout fetching public key from {self.url_realm}",
             )
-
-    async def get_fresh_pem_key(self) -> str:
-        key = await self.get_fresh_key_from_upstream()
-        return f"-----BEGIN PUBLIC KEY-----\n{key}\n-----END PUBLIC KEY-----"
-
-    async def clear_cache(self) -> None:
-        async with self._cache_lock:
-            self._cache.clear()
-
-    async def get_key_from_cache(self) -> typing.Optional[str]:
-        async with self._cache_lock:
-            cached = self._cache.get(self._cache_key)
-        if not cached:
-            return None
-        key, ts = cached
-        if ts + self.ttl < asyncio.get_running_loop().time():
-            # expired
-            return None
-        return key
-
-    async def set_key(self, key: str) -> str:
-        async with self._cache_lock:
-            self._cache[self._cache_key] = (key, asyncio.get_running_loop().time())
-        return key
-
-    async def get_or_set_key(self) -> str:
-        key = await self.get_key_from_cache()
-        if key:
-            return key
-        key = await self.get_fresh_pem_key()
-        await self.set_key(key)
-        return key
-
-    async def get_key(self, force: bool = False) -> str:
-        if force:
-            await self.clear_cache()
-        return await self.get_or_set_key()
 
 
 class FastAPIKeyManager(BasePublicKeyManager):
