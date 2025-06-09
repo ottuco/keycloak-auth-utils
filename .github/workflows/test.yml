@@ -1,6 +1,8 @@
 name: Tests with tox
 
 on:
+  push:
+    branches: ["**"]
   pull_request:
 
 jobs:
@@ -24,4 +26,5 @@ jobs:
         pip install tox -U
     - name: Run Tests
       run: |
+        export PYTHONPATH="${{ github.workspace }}"
         tox -r -vvv
