@@ -1,3 +1,4 @@
+import asyncio
 import typing
 from functools import lru_cache
 
@@ -56,3 +57,55 @@ class BasePublicKeyManager:
         if force:
             self.clear_cache(*args, **kwargs)
         return self.get_or_set_key(*args, **kwargs)
+
+
+class BaseAsyncPublicKeyManager(BasePublicKeyManager):
+    """Asynchronous variant of :class:`BasePublicKeyManager`."""
+
+    _cache: dict = {}
+    _cache_lock = asyncio.Lock()
+
+    @property
+    def cache_key(self) -> str:
+        return f"keycloak_public_key_{self.realm}"
+
+    async def get_fresh_key_from_upstream(self) -> str:  # type: ignore[override]
+        raise NotImplementedError
+
+    async def get_fresh_pem_key(self) -> str:  # type: ignore[override]
+        key = await self.get_fresh_key_from_upstream()
+        return f"-----BEGIN PUBLIC KEY-----\n{key}\n-----END PUBLIC KEY-----"
+
+    async def clear_cache(self, *args, **kwargs) -> None:  # type: ignore[override]
+        async with self._cache_lock:
+            self._cache.pop(self.cache_key, None)
+
+    # type: ignore[override]
+    async def get_key_from_cache(self, *args, **kwargs) -> typing.Optional[str]:
+        async with self._cache_lock:
+            cached = self._cache.get(self.cache_key)
+        if not cached:
+            return None
+        key, ts = cached
+        if ts + self.ttl < asyncio.get_running_loop().time():
+            return None
+        return key
+
+    async def set_key(self, key: str, *args, **kwargs) -> str:  # type: ignore[override]
+        async with self._cache_lock:
+            self._cache[self.cache_key] = (key, asyncio.get_running_loop().time())
+        return key
+
+    async def get_or_set_key(self, *args, **kwargs) -> str:  # type: ignore[override]
+        key = await self.get_key_from_cache(*args, **kwargs)
+        if key:
+            return key
+        key = await self.get_fresh_pem_key()
+        await self.set_key(key, *args, **kwargs)
+        return key
+
+    # type: ignore[override]
+    async def get_key(self, force: bool = False, *args, **kwargs) -> str:
+        if force:
+            await self.clear_cache(*args, **kwargs)
+        return await self.get_or_set_key(*args, **kwargs)

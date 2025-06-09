@@ -1,5 +1,5 @@
-import typing
 import inspect
+import typing
 
 from asgiref.sync import sync_to_async
 from fastapi import Request, Response
@@ -24,7 +24,9 @@ class _AbstractFastAPIKCAuthentication(BaseHTTPMiddleware):
         raise NotImplementedError
 
     async def post_process_claims(
-        self, claims: typing.Optional[dict], request: Request
+        self,
+        claims: typing.Optional[dict],
+        request: Request,
     ) -> Request:
         return request
 
@@ -35,7 +37,9 @@ class _AbstractFastAPIKCAuthentication(BaseHTTPMiddleware):
             return False
 
     async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
     ) -> Response:
         already_authenticated = self.is_already_authenticated(request=request)
         if not already_authenticated:

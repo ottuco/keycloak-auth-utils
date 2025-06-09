@@ -2,8 +2,8 @@ import typing
 
 from asgiref.sync import sync_to_async
 
-from ..verifier.fastapi import AsyncFastAPITokenVerifier, FastAPITokenVerifier
 from ..errors import JWTDecodeError
+from ..verifier.fastapi import AsyncFastAPITokenVerifier, FastAPITokenVerifier
 from .base import APIAuthMixin, BaseKCAuthBackend
 
 
