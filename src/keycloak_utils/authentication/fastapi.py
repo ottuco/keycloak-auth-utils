@@ -1,4 +1,5 @@
 import typing
+import inspect
 
 from asgiref.sync import sync_to_async
 from fastapi import Request, Response
@@ -42,7 +43,11 @@ class _AbstractFastAPIKCAuthentication(BaseHTTPMiddleware):
                 claims = await self.authenticate(request=request)
             except AuthInterruptedError as e:
                 return JSONResponse(status_code=401, content={"detail": str(e)})
-            request = await self.post_process_claims(claims=claims, request=request)
+            result = self.post_process_claims(claims=claims, request=request)
+            if inspect.isawaitable(result):
+                request = await result
+            else:
+                request = result
         response = await call_next(request)
         return response
 
