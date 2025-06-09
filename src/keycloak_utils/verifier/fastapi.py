@@ -1,5 +1,3 @@
-import typing
-
 from asgiref.sync import sync_to_async
 
 from ..manager.fastapi import AsyncFastAPIKeyManager, FastAPIKeyManager
