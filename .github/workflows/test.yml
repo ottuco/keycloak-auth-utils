@@ -31,4 +31,4 @@ jobs:
     - name: Run Test using PyTest
       run: |
         pip install .[dev]
-        pytest .
+        python -m pytest .
