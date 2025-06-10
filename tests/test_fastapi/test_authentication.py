@@ -31,7 +31,7 @@ class TestAuthenticationAPI:
     def test_empty_authorization(self):
         response = client.get("/", headers={"Authorization": ""})
         assert response.status_code == 403
-        assert response.json() == {"detail": "Not authenticated"}
+        assert response.json() == {"detail": "Not authenticated - This should Fail"}
 
     def test_auth_with_prefix_only(self):
         response = client.get("/", headers={"Authorization": "Bearer"})
