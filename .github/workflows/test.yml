@@ -28,3 +28,7 @@ jobs:
       run: |
         export PYTHONPATH="${{ github.workspace }}"
         tox -r -vvv
+    - name: Run Test using PyTest
+      run: |
+        pip install .[dev]
+        pytest .
