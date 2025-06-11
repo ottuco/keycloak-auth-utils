@@ -8,21 +8,17 @@
 pip install keycloak-utils[django]
 ```
 
-### 2. FastAPI
+### 2. Django/DRF with synchronization
+
+```bash
+pip install keycloak-utils[django-sync]
+```
+
+### 3. FastAPI
 
 ```bash
 pip install keycloak-utils[fastapi]
 ````
-
-### 3. Framework with Celery
-framework types are one of: [django, fastapi]
-```bash
-pip install keycloak-utils[{Framewrok}, celery] 
-```
-or
-```bash
-pip install keycloak-utils[{Framewrok}-celery] 
-```
 
 ## Usage
 
