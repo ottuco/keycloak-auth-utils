@@ -52,19 +52,18 @@ dependencies = [
 [project.optional-dependencies]
 django = ["djangorestframework>=3.12.0", "Django>=3.2", "redis>=5.0.3"]
 fastapi = ["fastapi>=0.68.0"]
-celery = ["celery>=5.4.0"]
+django-sync = ["keycloak-utils[django]", "celery>=5.4.0"]
 
-django-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
-fastapi-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
+all = ["keycloak-utils[django-sync,fastapi]"]
 
-all = ["keycloak-utils[django,fastapi,celery]"]
+# Testing dependencies
+tox = ["tox>=4.0.0"]
+pytest = ["pytest>=7.0.0"]
+test-fastapi = ["keycloak-utils[fastapi,pytest,tox]"]
+test-django = ["keycloak-utils[django-sync,pytest,tox]", "pytest-django>=4.5.2"]
 
-fastapi-test = ["httpx"]
-test = [
-    "keycloak-utils[django,fastapi-test]",
-    "pytest-django~=4.5.2",
-    "tox"
-]
+
+
 lint-and-formatting = [
     "black",
     "flake8",
