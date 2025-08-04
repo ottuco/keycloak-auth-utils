@@ -66,13 +66,23 @@ class EventStrategy(ABC):
             - Executes the corresponding operation strategy (CREATE, UPDATE, DELETE).
             - If tenant_schema is provided, executes within that schema context.
         """
-        if not self._validate_event(event_data) or not (
-            event_info := self._get_event_info(event_data["data"], event_type)
-        ):
+        if not self._validate_event(event_data):
+            logger.warning(
+                "passed data is not of valid format, this data segment will be ignored."
+            )
+            return
+
+        if not (event_info := self._get_event_info(event_data["data"], event_type)):
+            logger.warning(
+                "event info could not be extracted, key must be in (User, Permission, Role)."
+            )
             return
 
         operation_strategy = self._get_operation_strategy(operation_type)
         if operation_strategy is None:
+            logger.warning(
+                "operation strategy invalid must be one of (CREATE, UPDATE, DELETE)."
+            )
             return
 
         # If tenant_schema is provided, wrap the operation strategy with schema_based
@@ -185,6 +195,9 @@ class EventStrategy(ABC):
             Optional[Tuple]: A tuple containing permission-related information, or None if not valid.
         """
         if event_data["Client_Name"] != self.ms_name:
+            logger.info(
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+            )
             return
         operation_info = event_data["operation_information"]
         policies = operation_info["apply_policy"]
@@ -220,6 +233,9 @@ class EventStrategy(ABC):
         """
         role = event_data["operation_information"]
         if role["client"] != self.ms_name:
+            logger.info(
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+            )
             return
         group_name = role["role_name"]
         role_id = role["role_id"]
@@ -235,11 +251,14 @@ class EventStrategy(ABC):
         Returns:
             Optional[Tuple]: A tuple containing user-related information, or None if not valid.
         """
-        kc_admin.connection.realm_name = KC_UTILS_KC_REALM
+        kc_admin.connection.realm_name = event_data["Realm_Name"]
         clients = kc_admin.get_clients()
         if not any(
             client.get("clientId") == KC_UTILS_KC_CLIENT_ID for client in clients
         ):
+            logger.info(
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+            )
             return
         user = event_data["operation_information"]
         roles = (
