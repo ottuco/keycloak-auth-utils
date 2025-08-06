@@ -50,7 +50,7 @@ dependencies = [
 "Homepage" = "https://github.com/jerinpetergeorge/keycloak-auth-utils"
 
 [project.optional-dependencies]
-django = ["djangorestframework>=3.12.0", "Django>=3.2", "redis>=5.0.3"]
+django = ["djangorestframework>=3.12.0", "Django>=3.2", "redis>=5.0.3", "django-tenants>=3.7.0"]
 fastapi = ["fastapi>=0.68.0"]
 celery = ["celery>=5.4.0"]
 
