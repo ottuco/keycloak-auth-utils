@@ -114,17 +114,11 @@ class KeycloakSync:
             """
             Returns a JSON structured Scope as (name, display_name).
             """
-            model = perm.content_type.model
             app_label = perm.content_type.app_label
-            try:
-                action = perm.name.split(" ")[1]
-            except IndexError:
-                action = perm.name.split("_")[1]
+            model = perm.content_type.model
 
-            formatted_auth_scope = f"{app_label}.{model}.{action}_{model}"
-            formatted_auth_scope_display = (
-                f"{formatted_auth_scope}.can_{action}_{model}"
-            )
+            formatted_auth_scope = f"{app_label}.{model}.{perm.codename}"
+            formatted_auth_scope_display = f"{formatted_auth_scope}.can_{perm.codename}"
             scope_dict = {
                 "name": formatted_auth_scope,
                 "displayName": formatted_auth_scope_display,
