@@ -12,6 +12,7 @@ from django.http import (
 )
 from django.urls import reverse
 from django.utils.crypto import get_random_string
+from django.utils.html import escape
 from django.utils.http import urlencode
 from django.views.generic import RedirectView, View
 
@@ -294,4 +295,10 @@ class ErrorView(View):
     """
 
     def get(self, request: HttpRequest) -> HttpResponse:
-        return HttpResponse(request.GET.items())
+        error_message = request.GET.get("error", "An unknown error occurred")
+        if not error_message:
+            error_message = "An unknown error occurred"
+        escaped_message = escape(error_message)
+        return HttpResponse(
+            f"<html><body><h1>Error</h1><p>{escaped_message}</p></body></html>",
+        )
