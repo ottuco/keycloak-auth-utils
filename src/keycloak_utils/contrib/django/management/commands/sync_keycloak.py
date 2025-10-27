@@ -11,8 +11,8 @@ from keycloak_utils.sync.django.core import (
     KeycloakUser,
 )
 from keycloak_utils.sync.kc_admin import kc_admin
-
 from keycloak_utils.utils import schema_based
+
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
     KC_UTILS_KC_ADMIN_PASSWORD,
@@ -138,7 +138,8 @@ class Command(BaseCommand):
             help="List of clients to create in the specified realm.",
         )
 
-    def _validate_options(self, options): ...
+    def _validate_options(self, options):
+        ...
 
     @classmethod
     @contextmanager
@@ -221,11 +222,11 @@ class Command(BaseCommand):
                 )
 
                 logger.info(
-                    f"Keycloak {config['classpath'].split('.')[-1]} sync routine is delegated successfully."
+                    f"Keycloak {config['classpath'].split('.')[-1]} sync routine is delegated successfully.",
                 )
 
                 if config.get("requires_await"):
                     task.get()
                     logger.info(
-                        f"Keycloak {config['classpath'].split('.')[-1]} sync routine is complete."
+                        f"Keycloak {config['classpath'].split('.')[-1]} sync routine is complete.",
                     )

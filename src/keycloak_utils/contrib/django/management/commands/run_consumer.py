@@ -3,6 +3,7 @@ import signal
 import sys
 
 from django.core.management.base import BaseCommand
+
 from keycloak_utils.consumer.core import EventConsumer
 
 logger = logging.getLogger("keycloak_event_consumer")

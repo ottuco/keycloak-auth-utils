@@ -31,7 +31,9 @@ class EventHandler:
 
     @staticmethod
     def process_message(
-        event_data: Dict, tenant_based: bool = False, is_custom_schema: bool = False
+        event_data: Dict,
+        tenant_based: bool = False,
+        is_custom_schema: bool = False,
     ) -> bool:
         """
         Processes an event message by determining its event and operation type,
@@ -587,4 +589,5 @@ class EventConsumer(EventHandler):
             logger.error(f"connection error {e}")
 
 
-class EventAPIHandler(EventHandler): ...
+class EventAPIHandler(EventHandler):
+    ...
