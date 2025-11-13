@@ -96,7 +96,7 @@ PYTHONPATH=. .venv/bin/pytest tests/test_rest_framework/ -v
 ## Python Support
 
 - Requires Python 3.7+
-- Tested on Python 3.7, 3.8, 3.9, 3.10
+- Tested on Python 3.7, 3.8, 3.9, 3.10, 3.11
 
 ## Common Development Tasks
 
