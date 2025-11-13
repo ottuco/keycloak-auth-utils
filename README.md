@@ -18,7 +18,7 @@ pip install keycloak-utils[django-sync]
 
 ```bash
 pip install keycloak-utils[fastapi]
-````
+```
 
 ## Usage
 
@@ -34,7 +34,7 @@ User = get_user_model()
 
 class KeycloakDRFAuthentication(BaseDRFKCAuthentication):
     kc_host = "localhost:8443"
-    kc_realm = "your-realm-nae"
+    kc_realm = "your-realm-name"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
     auth_scheme = "Bearer"
@@ -124,7 +124,7 @@ User = get_user_model()
 
 class KCBearerAuth(BaseDRFKCAuthentication):
     kc_host = "localhost:8443"
-    kc_realm = "your-realm-nae"
+    kc_realm = "your-realm-name"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
     auth_scheme = "Bearer"
@@ -255,7 +255,7 @@ python -m pytest
 ```
 
 ## Release
-```base
+```bash
 # do a dry-run first -
 bump2version --dry-run --verbose [major|minor|patch]
 
@@ -263,7 +263,7 @@ bump2version --dry-run --verbose [major|minor|patch]
 bump2version --verbose [major|minor|patch]
 
 # push the changes to remote
-git push origin master --tags
+git push origin main --tags
 ```
 
 
@@ -292,7 +292,7 @@ These environment variables are required for integrating Keycloak utilities into
 | `RABBITMQ_URL`                 | ``                        | The RabbitMQ url.                                                                                             |
 | `KC_UTILS_CREATE_QUEUES`       | `{}`                      | The dictionary of queues that needs to be created keys are types, values are lists of queue names.            |
 | `KC_UTILS_CONSUMER_QUEUES`     | `{}`                      | The dictionary of queues that needs to be created and synced keys are types, values are lists of queue names. |
-| `KC_UTILS_MESSAGE_MAX_RETRIES` | `10`                      | Integer defining the maximum rertries of a failed message before discpose, defaults to `10`                   |
+| `KC_UTILS_MESSAGE_MAX_RETRIES` | `10`                      | Integer defining the maximum retries of a failed message before dispose, defaults to `10`                   |
 
 ### **Why These Settings Are Necessary**
 
@@ -591,7 +591,7 @@ import sys
 import logging
 
 from django.core.management.base import BaseCommand
-from keycloak_utils.consumer.rest_framework.core import KeycloakEventConsumer
+from keycloak_utils.consumer.core import EventConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -652,7 +652,7 @@ class Command(BaseCommand):
             "general": options["general_consumer_queues"],
         }
 
-        consumer = KeycloakEventConsumer()
+        consumer = EventConsumer()
 
         consumer.register_queue(create_queues, queue_status="create")
         consumer.register_queue(consumer_queues, queue_status="sync")
@@ -738,7 +738,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
-from keycloak_utils.consumer.rest_framework.core import KeycloakEventAPI
+from keycloak_utils.consumer.core import EventHandler
 from rest_framework.views import APIView
 
 logger = logging.getLogger(__name__)
@@ -769,7 +769,7 @@ class ConsumerAPIView(APIView):
     def post(self, request, *args, **kwargs):
         event_data = request.data
         try:
-            processed = KeycloakEventAPI.process_message(event_data)
+            processed = EventHandler.process_message(event_data)
             if processed:
                 return Response(
                     f"processed event {event_data} successfully!",
