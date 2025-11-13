@@ -527,7 +527,7 @@ python manage.py sync_keycloak \
     -migrate-groups \
     -migrate-users \
     -migrate-base \
-    -migrate-permissions 
+    -migrate-permissions
 ```
 
 

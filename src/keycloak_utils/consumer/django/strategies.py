@@ -27,7 +27,7 @@ def schema_based(func, schema):
             and schema != "public"
         ):
             raise RuntimeError(
-                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema."
+                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
             )
 
         connection.set_schema(schema)
@@ -68,20 +68,20 @@ class EventStrategy(ABC):
         """
         if not self._validate_event(event_data):
             logger.warning(
-                "passed data is not of valid format, this data segment will be ignored."
+                "passed data is not of valid format, this data segment will be ignored.",
             )
             return
 
         if not (event_info := self._get_event_info(event_data["data"], event_type)):
             logger.warning(
-                "event info could not be extracted, key must be in (User, Permission, Role)."
+                "event info could not be extracted, key must be in (User, Permission, Role).",
             )
             return
 
         operation_strategy = self._get_operation_strategy(operation_type)
         if operation_strategy is None:
             logger.warning(
-                "operation strategy invalid must be one of (CREATE, UPDATE, DELETE)."
+                "operation strategy invalid must be one of (CREATE, UPDATE, DELETE).",
             )
             return
 
@@ -196,7 +196,7 @@ class EventStrategy(ABC):
         """
         if event_data["Client_Name"] != self.ms_name:
             logger.info(
-                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
         operation_info = event_data["operation_information"]
@@ -234,7 +234,7 @@ class EventStrategy(ABC):
         role = event_data["operation_information"]
         if role["client"] != self.ms_name:
             logger.info(
-                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
         group_name = role["role_name"]
@@ -257,7 +257,7 @@ class EventStrategy(ABC):
             client.get("clientId") == KC_UTILS_KC_CLIENT_ID for client in clients
         ):
             logger.info(
-                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done"
+                f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
         user = event_data["operation_information"]
@@ -279,13 +279,16 @@ class EventStrategy(ABC):
         return user, roles_names, timezone, is_superuser
 
     @abstractmethod
-    def _handle_create(self, *args, **kwargs) -> None: ...
+    def _handle_create(self, *args, **kwargs) -> None:
+        ...
 
     @abstractmethod
-    def _handle_update(self, *args, **kwargs) -> None: ...
+    def _handle_update(self, *args, **kwargs) -> None:
+        ...
 
     @abstractmethod
-    def _handle_delete(self, *args, **kwargs) -> None: ...
+    def _handle_delete(self, *args, **kwargs) -> None:
+        ...
 
     def _get_operation_strategy(self, operation_type: str) -> Callable:
         """
@@ -384,7 +387,12 @@ class UserEventStrategy(EventStrategy):
     """
 
     def _handle_create(
-        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool, **kwargs
+        self,
+        kc_user: Dict,
+        roles: List,
+        timezone: str,
+        is_superuser: bool,
+        **kwargs,
     ):
         """
         Handles the creation of a new user.
@@ -409,7 +417,12 @@ class UserEventStrategy(EventStrategy):
         logger.info(f"created user {user}")
 
     def _handle_update(
-        self, kc_user: Dict, roles: List, timezone: str, is_superuser: bool, **kwargs
+        self,
+        kc_user: Dict,
+        roles: List,
+        timezone: str,
+        is_superuser: bool,
+        **kwargs,
     ):
         """
         Handles the update of an existing user.
@@ -586,12 +599,12 @@ class PermissionEventStrategy(EventStrategy):
             Info: Success or failure of adding/removing the permission from groups.
         """
         add_perm_groups = self.group_model.objects.filter(
-            name__in=groups_names
+            name__in=groups_names,
         ).exclude(
             permissions=permission,
         )
         remove_perm_groups = self.group_model.objects.filter(
-            permissions=permission
+            permissions=permission,
         ).exclude(
             name__in=groups_names,
         )

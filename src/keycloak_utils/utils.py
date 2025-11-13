@@ -1,5 +1,6 @@
-import jwt
 from functools import wraps
+
+import jwt
 
 from .errors import JWTDecodeError
 
@@ -27,9 +28,10 @@ def verify_token(
 def schema_based(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
         from django.db import connection
         from django_tenants.utils import get_tenant_model
+
+        from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
 
         is_postgres = connection.vendor == "postgresql"
         if not is_postgres:
@@ -42,7 +44,7 @@ def schema_based(func):
             and schema != "public"
         ):
             raise RuntimeError(
-                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema."
+                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
             )
 
         connection.set_schema(schema)
