@@ -54,6 +54,7 @@ keycloak-auth-utils/
 ├── tests/
 │   ├── test_rest_framework/     # Django/DRF tests
 │   └── test_fastapi/            # FastAPI tests
+│   └── test_consumer.py          # Consumer tests
 ├── pyproject.toml               # Project configuration
 └── README.md                    # Documentation
 ```
