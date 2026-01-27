@@ -45,4 +45,3 @@ class PredefinedRolesProviderNotConfigured(RuntimeError):
 if not conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER:
     raise PredefinedRolesProviderNotConfigured("KC_UTILS_PREDEFINED_ROLES_PROVIDER")
 
-roles_predefined = load_callable_from_path(conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER)()
