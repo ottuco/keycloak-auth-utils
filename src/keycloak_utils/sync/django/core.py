@@ -13,6 +13,7 @@ from django.db.models import Q, QuerySet
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from ..kc_admin import kc_admin
+from ..predefined import roles_predefined
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -798,6 +799,9 @@ class KeycloakRole(KeycloakSync):
     current_role: str = None  # The current role ID in Keycloak
     current_policy: str = None  # The current policy ID in Keycloak
 
+    def _get_permissions(self, group) -> list[Permission]:
+        return group.permissions.all()
+
     def _create_generator(self) -> Generator[Group, None, None]:
         """
         Internal method to create a generator that fetches all Group objects from Django.
@@ -856,7 +860,7 @@ class KeycloakRole(KeycloakSync):
             group: The Group object to associate policies with permissions.
         """
         kc_perm_obj = KeycloakPermission()
-        permissions = group.permissions.all()
+        permissions = self._get_permissions(group)
         for permission in permissions:
             scope = kc_perm_obj.create_kc_scope(permission)
             kc_permission = kc_perm_obj.create_kc_permission(permission)
@@ -907,6 +911,21 @@ class KeycloakRole(KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
+@dataclass
+class KeycloakPredefinedRole(KeycloakRole):
+    def _get_permissions(self, group) -> list[Permission]:
+        return group.permissions
+
+    def _create_generator(self) -> Generator[Group, None, None]:
+        """
+        Internal method to create a generator that fetches all Group objects from Django.
+        Yields: Group objects.
+        """
+        groups = roles_predefined
+        yield from groups
+    
+    def create_role(self, group: Group) -> Dict[str, Any]:
+        return super().create_role.__wrapped__(self, group)
 
 @dataclass
 class KeycloakUser(KeycloakSync):
