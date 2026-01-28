@@ -18,7 +18,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keycloak-utils"
-version = "0.5.0"
+version = "0.12.2"
 authors = [
     { name = "Jerin Peter George", email = "jerinpetergeorge@gmail.com" },
 ]
@@ -35,43 +35,43 @@ classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Utilities",
 ]
 dependencies = [
     "requests>=2.31.0",
     "pyjwt[crypto]>=2.8.0",
-    "python-keycloak>=4.6.2",
+    "python-keycloak>=4.6.2,<6.0.0",
     "pika>=1.3.2",
-    "msgpack_python>=0.5.6",
+    "msgpack>=1.0.0",
     "pydantic>=1.10.12",
+    "httpx>=0.24.0",
+    "asgiref>=3.6.0",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/jerinpetergeorge/keycloak-auth-utils"
+"Homepage" = "https://github.com/ottuco/keycloak-auth-utils.git"
 
 [project.optional-dependencies]
-django = ["djangorestframework>=3.12.0", "Django>=3.2", "redis>=5.0.3", "django-tenants>=3.7.0"]
+django = [
+    "djangorestframework>=3.12.0",
+    "Django>=3.2",
+    "redis>=5.0.3",
+    "django-tenants>=3.7.0",
+]
 fastapi = ["fastapi>=0.68.0"]
-celery = ["celery>=5.4.0"]
+django-sync = ["keycloak-utils[django]", "celery>=5.4.0"]
 
-django-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
-fastapi-celery = ["keycloak-utils[django]", "keycloak-utils[celery]"]
+all = ["keycloak-utils[django-sync,fastapi]"]
 
-all = ["keycloak-utils[django,fastapi,celery]"]
+# Testing dependencies
+tox = ["tox>=4.0.0"]
+pytest = ["pytest>=7.0.0"]
+test-fastapi = ["keycloak-utils[fastapi,pytest,tox]"]
+test-django = ["keycloak-utils[django-sync,pytest,tox]", "pytest-django>=4.5.2"]
 
-fastapi-test = ["httpx"]
-test = [
-    "keycloak-utils[django,fastapi-test]",
-    "pytest-django~=4.5.2",
-    "tox"
-]
-lint-and-formatting = [
-    "black",
-    "flake8",
-    "flake8-print",
-    "isort",
-    "pre-commit",
-]
+
+lint-and-formatting = ["black", "flake8", "flake8-print", "isort", "pre-commit"]
 dev = ["keycloak-utils[test, lint-and-formatting]", "bump2version~=1.0.1"]
 
 [tool.pytest.ini_options]
