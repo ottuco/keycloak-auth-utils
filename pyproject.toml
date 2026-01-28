@@ -18,7 +18,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keycloak-utils"
-version = "0.12.2"
+version = "0.13.0"
 authors = [
     { name = "Jerin Peter George", email = "jerinpetergeorge@gmail.com" },
 ]
