@@ -21,14 +21,13 @@ def load_callable_from_path(dotted_path: str):
     try:
         fn = getattr(module, attr)
     except AttributeError:
-        raise RuntimeError(
-            f"Callable '{attr}' not found in module '{module_path}'"
-        )
+        raise RuntimeError(f"Callable '{attr}' not found in module '{module_path}'")
 
     if not callable(fn):
         raise RuntimeError(f"'{dotted_path}' is not callable")
 
     return fn
+
 
 class PredefinedRolesProviderNotConfigured(RuntimeError):
     """
@@ -41,7 +40,7 @@ class PredefinedRolesProviderNotConfigured(RuntimeError):
             f"Set the environment variable '{env_var}' "
             f"to a dotted callable path."
         )
-        
+
+
 if not conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER:
     raise PredefinedRolesProviderNotConfigured("KC_UTILS_PREDEFINED_ROLES_PROVIDER")
-
