@@ -46,11 +46,11 @@ class Command(BaseCommand):
             "extra_args": lambda self: [self.perms],
             "soft_time_limit": 1000,
         },
-        "migrate_predefined_groups" :{
+        "migrate_predefined_groups": {
             "classpath": "keycloak_utils.sync.django.core.KeycloakPredefinedRole",
             "extra_args": lambda self: [],
             "soft_time_limit": 1000,
-        }
+        },
     }
 
     def add_arguments(self, parser):
@@ -142,8 +142,7 @@ class Command(BaseCommand):
             help="List of clients to create in the specified realm.",
         )
 
-    def _validate_options(self, options):
-        ...
+    def _validate_options(self, options): ...
 
     @classmethod
     @contextmanager

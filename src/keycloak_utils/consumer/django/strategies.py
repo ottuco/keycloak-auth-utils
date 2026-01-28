@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Tuple, Type
@@ -201,7 +202,10 @@ class EventStrategy(ABC):
             return
         operation_info = event_data["operation_information"]
         policies = operation_info["apply_policy"]
-        groups = [policy.replace("Policy", "") for policy in policies]
+        groups = groups = [
+            re.sub(r"[\s\-_]*policy\s*$", "", policy, flags=re.IGNORECASE).strip()
+            for policy in policies
+        ]
         permission_info = operation_info["name"]
         try:
             permission_codename = permission_info.split(".")[2]
@@ -279,16 +283,13 @@ class EventStrategy(ABC):
         return user, roles_names, timezone, is_superuser
 
     @abstractmethod
-    def _handle_create(self, *args, **kwargs) -> None:
-        ...
+    def _handle_create(self, *args, **kwargs) -> None: ...
 
     @abstractmethod
-    def _handle_update(self, *args, **kwargs) -> None:
-        ...
+    def _handle_update(self, *args, **kwargs) -> None: ...
 
     @abstractmethod
-    def _handle_delete(self, *args, **kwargs) -> None:
-        ...
+    def _handle_delete(self, *args, **kwargs) -> None: ...
 
     def _get_operation_strategy(self, operation_type: str) -> Callable:
         """

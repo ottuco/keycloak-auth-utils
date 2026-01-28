@@ -589,5 +589,4 @@ class EventConsumer(EventHandler):
             logger.error(f"connection error {e}")
 
 
-class EventAPIHandler(EventHandler):
-    ...
+class EventAPIHandler(EventHandler): ...

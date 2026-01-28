@@ -42,8 +42,7 @@ class BasePublicKeyManager:
     def get_key_from_cache(self, *args, **kwargs) -> typing.Optional[str]:
         return self.get_fresh_pem_key()
 
-    def set_key(self, key: str, *args, **kwargs) -> str:
-        ...
+    def set_key(self, key: str, *args, **kwargs) -> str: ...
 
     def get_or_set_key(self, *args, **kwargs) -> str:
         key = self.get_key_from_cache(*args, **kwargs)

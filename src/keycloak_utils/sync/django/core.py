@@ -11,9 +11,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.db.models import Q, QuerySet
 
-from src.keycloak_utils.contrib.django import conf
-
-from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+from ...contrib.django.conf import (
+    KC_UTILS_KC_CLIENT_ID,
+    KC_UTILS_PREDEFINED_ROLES_PROVIDER,
+)
 from ..kc_admin import kc_admin
 from ..predefined import load_callable_from_path
 
@@ -463,7 +464,7 @@ class KeycloakSync:
         if (
             entity := self._get_kc_entity_by_name(entity_name, entity_type=entity_type)
         ) is not None:
-            logger.info(f'{entity_type} {entity.get(key, "")} already exists.')
+            logger.info(f"{entity_type} {entity.get(key, '')} already exists.")
 
         else:
             entity = cast(Dict, self.__create_kc_entity(json, entity_type))
@@ -738,7 +739,7 @@ class KeycloakPermission(KeycloakSync):
                 for resource_scope in resource["scopes"]
             ):
                 logger.info(
-                    f'Scope {scope["name"]} already exists in resource {resource["name"]}',
+                    f"Scope {scope['name']} already exists in resource {resource['name']}",
                 )
                 return
 
@@ -749,7 +750,7 @@ class KeycloakPermission(KeycloakSync):
                 resource,
             )
 
-            logger.info(f'Added scope {scope["name"]} to resource {resource["name"]}')
+            logger.info(f"Added scope {scope['name']} to resource {resource['name']}")
 
         except Exception as e:
             logger.error(f"An error occurred while creating authz scope {e}")
@@ -879,7 +880,7 @@ class KeycloakRole(KeycloakSync):
 
             if not all(policy["name"] != p["name"] for p in permission_policies):
                 logger.info(
-                    f'Policy {policy["name"]} already exists in permission {kc_permission["name"]}',
+                    f"Policy {policy['name']} already exists in permission {kc_permission['name']}",
                 )
                 continue
 
@@ -891,7 +892,7 @@ class KeycloakRole(KeycloakSync):
                 self.kc_client_id,
                 kc_permission_id,
             )
-            logger.info(f'Added {policy["name"]} to permission {kc_permission["name"]}')
+            logger.info(f"Added {policy['name']} to permission {kc_permission['name']}")
 
     def run_routine(self) -> None:
         """
@@ -913,6 +914,7 @@ class KeycloakRole(KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
+
 @dataclass
 class KeycloakPredefinedRole(KeycloakRole):
     def _get_permissions(self, group) -> list[Permission]:
@@ -923,12 +925,13 @@ class KeycloakPredefinedRole(KeycloakRole):
         Internal method to create a generator that fetches all Group objects from Django.
         Yields: Group objects.
         """
-        roles_predefined = load_callable_from_path(conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER)()
+        roles_predefined = load_callable_from_path(KC_UTILS_PREDEFINED_ROLES_PROVIDER)()
         groups = roles_predefined
         yield from groups
-    
+
     def create_role(self, group: Group) -> Dict[str, Any]:
         return super().create_role.__wrapped__(self, group)
+
 
 @dataclass
 class KeycloakUser(KeycloakSync):
