@@ -4,12 +4,6 @@ from contextlib import contextmanager
 from django.core.management.base import BaseCommand
 from keycloak import KeycloakConnectionError, KeycloakGetError
 
-from keycloak_utils.sync.django.core import (
-    KeycloakBase,
-    KeycloakPermission,
-    KeycloakRole,
-    KeycloakUser,
-)
 from keycloak_utils.sync.kc_admin import kc_admin
 from keycloak_utils.utils import schema_based
 
@@ -52,6 +46,11 @@ class Command(BaseCommand):
             "extra_args": lambda self: [self.perms],
             "soft_time_limit": 1000,
         },
+        "migrate_predefined_groups" :{
+            "classpath": "keycloak_utils.sync.django.core.KeycloakPredefinedRole",
+            "extra_args": lambda self: [],
+            "soft_time_limit": 1000,
+        }
     }
 
     def add_arguments(self, parser):
@@ -80,7 +79,12 @@ class Command(BaseCommand):
             help="Migrate base from Django to Keycloak",
             default=False,
         )
-
+        parser.add_argument(
+            "-migrate-predefined-groups",
+            action="store_true",
+            help="Migrate predefined roles from Django to Keycloak",
+            default=False,
+        )
         parser.add_argument(
             "-delegate-celery",
             action="store_true",
