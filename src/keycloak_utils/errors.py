@@ -37,14 +37,21 @@ class AuthSkipError(AuthenticationError):
 
 class AuthInterruptedError(AuthenticationError):
     """
-    Base class for all authentication authe
+    Base class for all authentication auth
     Errors that interrupt the authentication process
     """
 
 
 class PublicKeyNotFound(AuthInterruptedError):
     """
-    Base class for all Keycloak errors
+    Authentication interrupted because the public key
+    was not found at
+    `https://<KeyCloakDomain>/auth/realms/<RealmName>/` URL
+
+    Possible cases
+        1. the URL may be incorrect
+        2. the realm name may be incorrect
+        3. the realm may not exist
     """
 
 
