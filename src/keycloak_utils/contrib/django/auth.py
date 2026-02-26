@@ -25,6 +25,14 @@ class KCUtilsSSOBackend(SSOAuthBackend):
             "code_verifier": self.auth_code_verifier,
         }
 
+    def post_authenticate_hooks(self, claims: dict) -> dict:
+        """
+        This method is called after obtaining the claims from the token.
+        Set the idp_provider from claims to django session.
+        """
+        self.request.session["idp_provider"] = claims.get("idp_provider", "keycloak")
+        return claims
+
 
 class AuthenticationBackend(BaseKCSSODjangoAuthBackend):
     kc_host = conf.KC_UTILS_KC_HOST
