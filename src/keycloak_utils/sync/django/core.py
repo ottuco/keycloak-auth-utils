@@ -17,6 +17,7 @@ from ...contrib.django.conf import (
 )
 from ..kc_admin import kc_admin
 from ..predefined import load_callable_from_path
+from .mixins import ProtocolMapperMixin
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -798,7 +799,7 @@ class KeycloakPermission(KeycloakSync):
 
 
 @dataclass
-class KeycloakRole(KeycloakSync):
+class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
     current_role: str = None  # The current role ID in Keycloak
     current_policy: str = None  # The current policy ID in Keycloak
 
@@ -913,6 +914,16 @@ class KeycloakRole(KeycloakSync):
             except Exception as e:
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
+
+        self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
+
+
+@dataclass
+class KeycloakRolePermsMapper(ProtocolMapperMixin, KeycloakSync):
+    """Standalone sync class to create/update the role-permissions protocol mapper."""
+
+    def run_routine(self) -> None:
+        self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
 
 
 @dataclass

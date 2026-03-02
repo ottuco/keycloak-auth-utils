@@ -51,6 +51,10 @@ class Command(BaseCommand):
             "extra_args": lambda self: [],
             "soft_time_limit": 1000,
         },
+        "migrate_role_perms_mapper": {
+            "classpath": "keycloak_utils.sync.django.core.KeycloakRolePermsMapper",
+            "extra_args": lambda self: [],
+        },
     }
 
     def add_arguments(self, parser):
@@ -83,6 +87,12 @@ class Command(BaseCommand):
             "-migrate-predefined-groups",
             action="store_true",
             help="Migrate predefined roles from Django to Keycloak",
+            default=False,
+        )
+        parser.add_argument(
+            "-migrate-role-perms-mapper",
+            action="store_true",
+            help="Sync role-permissions protocol mapper to Keycloak client",
             default=False,
         )
         parser.add_argument(
@@ -159,9 +169,13 @@ class Command(BaseCommand):
             attrs |= {"eventsListeners": ["custom-event-listener", "jboss-logging"]}
             kc_admin.update_realm(realm_name, attrs)
 
-    @schema_based
     def handle(self, *args, **options):
         self._validate_options(options)
+
+        from django.db import connection
+
+        connection.set_schema(options["realm_name"])
+
         self.perms = (
             self.desired_models_perms_map if self.desired_models_perms_map else {}
         )

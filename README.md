@@ -587,16 +587,18 @@ python manage.py sync_keycloak \
     -migrate-users \
     -migrate-base \
     -migrate-permissions \
-    -migrate-predefined-groups \ 
+    -migrate-predefined-groups \
+    -migrate-role-perms-mapper
 ```
 
 
 #### **Options:**
 - `-migrate-base`: Creates Keycloak realm and initialize it's base data.
-- `-migrate-groups`: Synchronize Keycloak roles to Django groups.
+- `-migrate-groups`: Synchronize Keycloak roles to Django groups. Also updates the role-permissions protocol mapper on the frontend client.
 - `-migrate-users`: Migrate users from Django to Keycloak.
 - `-migrate-permissions`: Migrate permissions from Django to Keycloak.
 - `--migrate-predefined-groups`: Migrate predefined roles from Django to Keycloak.
+- `-migrate-role-perms-mapper`: Sync the role-permissions protocol mapper to the frontend client (can be run standalone).
 - `-delegate-celery`: Delegates the task to a celery worker
 - `--realm-name`: Specify the Keycloak realm to operate on.
 - `--clients`: Specify the clients that needs to be created noting that core and frontend are created by default
@@ -637,7 +639,48 @@ please provide these classes as strings to dynamically retrieve from inside lib
   - for base it's the clients that needs to be created those are passed via cli argvs
   - for permissions it's the permissions that need to be created these are overrides of `desired_models_perms_map` if not passed all permissions inside the microservice will be synced, including django's default ones
 
-### **2. Consumer**
+### **2. Role-Permissions Protocol Mapper**
+
+The `ProtocolMapperMixin` adds a hardcoded claim (`role_permissions`) to the **frontend** client's access token. The claim contains a JSON map of all roles and their permissions, keyed by microservice name.
+
+#### **Token claim structure:**
+```json
+{
+  "role_permissions": {
+    "payout": {
+      "admin": ["add_payment", "view_payment", "change_payment"],
+      "viewer": ["view_payment"]
+    },
+    "estate": {
+      "manager": ["add_property", "change_property"]
+    }
+  }
+}
+```
+
+Each microservice publishes its own key (based on `KC_UTILS_KC_CLIENT_ID`) when it runs the sync. Other services' entries are preserved.
+
+#### **How it runs:**
+
+| Trigger | What happens |
+|---|---|
+| `manage.py sync_keycloak -migrate-role-perms-mapper` | Standalone sync of the mapper to the frontend client |
+| `manage.py sync_keycloak -migrate-groups` | Mapper auto-updates after all roles and permissions are synced |
+| Consumer receives a permission event (create/update) | Mapper auto-updates after group permissions are modified |
+| Consumer receives a role delete event | Mapper auto-updates after the group is deleted |
+
+#### **Example standalone command:**
+```bash
+python manage.py sync_keycloak \
+    --realm-name "myapp.example.com" \
+    --private-clients payout \
+    -migrate-role-perms-mapper
+```
+
+#### **How the frontend uses it:**
+The access token already contains the user's roles in `realm_access.roles` or `resource_access.{client}.roles`. The frontend cross-references these with the `role_permissions` claim to determine the user's effective permissions per microservice.
+
+### **3. Consumer**
 The `consumer` command starts a consumer that receives keycloak events and handles them accordingly
 #### **example command:**
 ```bash
@@ -790,7 +833,7 @@ class EventTypeStrategyClassFactory(BaseEventStrategyFactory):
     }
 ```
 this class's event_map needs to be updatesd with the key of the event and the value the class that shouldbe defined to handle such event
-### **3. APIVIEW EventHandler **
+### **4. APIVIEW EventHandler **
 #### **example view file**
 ```python
 import logging

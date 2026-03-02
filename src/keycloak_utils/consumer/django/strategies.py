@@ -11,6 +11,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
+from ...sync.django.mixins import ProtocolMapperMixin
 from ...sync.kc_admin import kc_admin
 
 logger = logging.getLogger("keycloak_event_consumer")
@@ -324,7 +325,7 @@ class EventStrategy(ABC):
         return User
 
 
-class RoleEventStrategy(EventStrategy):
+class RoleEventStrategy(ProtocolMapperMixin, EventStrategy):
     """
     Strategy to handle events related to roles, such as create and delete operations.
     """
@@ -378,6 +379,7 @@ class RoleEventStrategy(EventStrategy):
             # self.kc_role.delete_policy(group)  # Placeholder for policy deletion
             group.delete()
             logger.info(f"group {group_name} deleted")
+            self.sync_protocol_mapper(self.ms_name)
         except Exception as e:
             logger.error(f"Error deleting group {group_name}: {e}")
 
@@ -475,7 +477,7 @@ class UserEventStrategy(EventStrategy):
         pass
 
 
-class PermissionEventStrategy(EventStrategy):
+class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
     """
     Strategy for handling permission-related events such as creation, update, and assignment to groups.
     """
@@ -633,6 +635,8 @@ class PermissionEventStrategy(EventStrategy):
             logger.info(f"Added permission {permission} to groups {add_perm_groups}")
         else:
             logger.info("No groups need this permission added.")
+
+        self.sync_protocol_mapper(self.ms_name)
 
     def _handle_delete(self, *args, **kwargs):
         """
