@@ -10,7 +10,7 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 
-from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
+from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from ...sync.django.mixins import ProtocolMapperMixin
 from ...sync.kc_admin import kc_admin
 
@@ -201,6 +201,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
+        kc_admin.connection.realm_name = event_data["Realm_Name"]
         operation_info = event_data["operation_information"]
         policies = operation_info["apply_policy"]
         groups = groups = [
@@ -242,6 +243,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
+        kc_admin.connection.realm_name = event_data["Realm_Name"]
         group_name = role["role_name"]
         role_id = role["role_id"]
         return group_name, role_id
@@ -378,10 +380,19 @@ class RoleEventStrategy(ProtocolMapperMixin, EventStrategy):
             group = self.group_model.objects.get(name=group_name)
             # self.kc_role.delete_policy(group)  # Placeholder for policy deletion
             group.delete()
-            logger.info(f"group {group_name} deleted")
+            logger.info("Group '%s' deleted.", group_name)
+        except Exception as e:
+            logger.error("Error deleting group '%s': %s", group_name, e)
+            return  # Do not sync mapper when the deletion itself failed.
+
+        try:
             self.sync_protocol_mapper(self.ms_name)
         except Exception as e:
-            logger.error(f"Error deleting group {group_name}: {e}")
+            logger.error(
+                "Error syncing protocol mapper after deleting group '%s': %s",
+                group_name,
+                e,
+            )
 
 
 class UserEventStrategy(EventStrategy):
@@ -613,30 +624,71 @@ class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
         )
 
         if remove_perm_groups:
-            list(
-                map(
-                    lambda group: group.permissions.remove(permission),
+            failed = []
+            for group in remove_perm_groups:
+                try:
+                    group.permissions.remove(permission)
+                except Exception as e:
+                    failed.append(group)
+                    logger.error(
+                        "Failed to remove permission '%s' from group '%s': %s",
+                        permission,
+                        group,
+                        e,
+                    )
+            if failed:
+                logger.warning(
+                    "Removed permission '%s' from some groups in %s, "
+                    "but %d group(s) failed.",
+                    permission,
                     remove_perm_groups,
-                ),
-            )
-            logger.info(
-                f"Removed permission {permission} from groups {remove_perm_groups}",
-            )
+                    len(failed),
+                )
+            else:
+                logger.info(
+                    "Removed permission '%s' from groups %s",
+                    permission,
+                    remove_perm_groups,
+                )
         else:
             logger.info("No groups need this permission removed")
 
         if add_perm_groups:
-            list(
-                map(
-                    lambda group: group.permissions.add(permission),
+            failed = []
+            for group in add_perm_groups:
+                try:
+                    group.permissions.add(permission)
+                except Exception as e:
+                    failed.append(group)
+                    logger.error(
+                        "Failed to add permission '%s' to group '%s': %s",
+                        permission,
+                        group,
+                        e,
+                    )
+            if failed:
+                logger.warning(
+                    "Added permission '%s' to some groups in %s, "
+                    "but %d group(s) failed.",
+                    permission,
                     add_perm_groups,
-                ),
-            )
-            logger.info(f"Added permission {permission} to groups {add_perm_groups}")
+                    len(failed),
+                )
+            else:
+                logger.info(
+                    "Added permission '%s' to groups %s",
+                    permission,
+                    add_perm_groups,
+                )
         else:
             logger.info("No groups need this permission added.")
 
-        self.sync_protocol_mapper(self.ms_name)
+        try:
+            self.sync_protocol_mapper(self.ms_name)
+        except Exception as e:
+            logger.error(
+                "Error syncing protocol mapper after updating permissions: %s", e
+            )
 
     def _handle_delete(self, *args, **kwargs):
         """

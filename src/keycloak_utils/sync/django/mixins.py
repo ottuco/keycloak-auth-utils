@@ -1,7 +1,9 @@
 import json
 import logging
+from typing import Optional
 
-from keycloak_utils.sync.kc_admin import kc_admin
+from ...contrib.django.conf import KC_UTILS_KC_FRONTEND_CLIENT_ID
+from ..kc_admin import kc_admin
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +21,17 @@ class ProtocolMapperMixin:
             "payout": {"admin": ["add_payment", "view_payment"]},
             "other":  {"editor": ["change_article"]}
         }
+
+    Subclasses may override FRONTEND_CLIENT_ID to target a different client.
+    KC_UTILS_KC_FRONTEND_CLIENT_ID (default: "frontend") controls the default.
     """
 
     MAPPER_NAME = "role-permissions-mapper"
-    FRONTEND_CLIENT_ID = "frontend"
+    FRONTEND_CLIENT_ID: str = KC_UTILS_KC_FRONTEND_CLIENT_ID
+
+    # ------------------------------------------------------------------ #
+    # Data helpers                                                         #
+    # ------------------------------------------------------------------ #
 
     def get_role_permissions_map(self) -> dict:
         from django.contrib.auth.models import Group
@@ -34,16 +43,23 @@ class ProtocolMapperMixin:
                 role_perms[group.name] = perms
         return role_perms
 
-    def _get_frontend_client_uuid(self) -> str:
+    # ------------------------------------------------------------------ #
+    # Keycloak API helpers                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _get_frontend_client_uuid(self) -> Optional[str]:
         clients = kc_admin.get_clients()
         for client in clients:
             if client["clientId"] == self.FRONTEND_CLIENT_ID:
                 return client["id"]
         return None
 
-    def _get_mapper_url(self, client_uuid: str) -> str:
+    def _mapper_base_url(self, client_uuid: str) -> str:
         realm = kc_admin.connection.realm_name
-        return f"/auth/admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models"
+        return (
+            f"/auth/admin/realms/{realm}/clients/{client_uuid}"
+            f"/protocol-mappers/models"
+        )
 
     def _build_mapper_payload(self, service_map: dict) -> dict:
         return {
@@ -61,25 +77,67 @@ class ProtocolMapperMixin:
             },
         }
 
-    def sync_protocol_mapper(self, client_id: str):
-        from django.db import connection
+    # ------------------------------------------------------------------ #
+    # Main sync entry point                                                #
+    # ------------------------------------------------------------------ #
 
-        kc_admin.connection.realm_name = connection.schema_name
+    def sync_protocol_mapper(self, client_id: str) -> None:
+        """
+        Merge this service's role→permissions map into the shared
+        role_permissions claim on the frontend client's protocol mapper.
 
+        In multi-tenant / consumer contexts the caller is responsible for
+        having set kc_admin.connection.realm_name to the correct realm
+        before invoking this method.  The method reads that value when
+        building Keycloak API URLs via _mapper_base_url().
+        """
+        # ---- 1. Locate the frontend client --------------------------------
         frontend_uuid = self._get_frontend_client_uuid()
         if not frontend_uuid:
-            logger.error("Frontend client not found, cannot sync mapper")
+            logger.error(
+                "Frontend client '%s' not found in Keycloak — cannot sync mapper.",
+                self.FRONTEND_CLIENT_ID,
+            )
             return
 
-        role_perms = self.get_role_permissions_map()
+        base_url = self._mapper_base_url(frontend_uuid)
 
-        url = self._get_mapper_url(frontend_uuid)
+        # ---- 2. Fetch existing protocol mappers with status validation -----
+        try:
+            get_response = kc_admin.connection.raw_get(base_url)
+        except Exception as e:
+            logger.error(
+                "Network error fetching protocol mappers for client '%s': %s",
+                self.FRONTEND_CLIENT_ID,
+                e,
+            )
+            return
 
-        # Read existing mapper to preserve other services' data
-        service_map = {}
-        existing_mapper_id = None
-        existing = kc_admin.connection.raw_get(url).json()
-        for mapper in existing:
+        if get_response.status_code != 200:
+            logger.error(
+                "Failed to fetch protocol mappers for client '%s': %s — %s",
+                self.FRONTEND_CLIENT_ID,
+                get_response.status_code,
+                get_response.text,
+            )
+            return
+
+        # ---- 3. Find the role-permissions mapper and read its service map --
+        existing_mapper_id: Optional[str] = None
+        service_map: dict = {}
+
+        try:
+            mappers = get_response.json()
+        except ValueError as e:
+            logger.error(
+                "Keycloak returned a non-JSON response when listing mappers "
+                "for client '%s': %s",
+                self.FRONTEND_CLIENT_ID,
+                e,
+            )
+            return
+
+        for mapper in mappers:
             if mapper["name"] == self.MAPPER_NAME:
                 existing_mapper_id = mapper["id"]
                 try:
@@ -87,33 +145,89 @@ class ProtocolMapperMixin:
                         mapper.get("config", {}).get("claim.value", "{}")
                     )
                 except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "Mapper '%s' has corrupt claim.value — resetting to empty.",
+                        self.MAPPER_NAME,
+                    )
                     service_map = {}
                 break
 
-        # Update this service's key (or remove it if no perms)
+        # ---- 4. Merge this service's permissions into the shared map -------
+        role_perms = self.get_role_permissions_map()
         if role_perms:
             service_map[client_id] = role_perms
         else:
             service_map.pop(client_id, None)
 
+        # ---- 5. If no permissions remain for ANY service, clean up mapper --
         if not service_map:
-            logger.info(f"No role_permissions for any service, skipping")
+            if existing_mapper_id:
+                try:
+                    del_response = kc_admin.connection.raw_delete(
+                        f"{base_url}/{existing_mapper_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Network error deleting mapper from '%s': %s",
+                        self.FRONTEND_CLIENT_ID,
+                        e,
+                    )
+                    return
+
+                if del_response.status_code == 204:
+                    logger.info(
+                        "Deleted role-permissions mapper from '%s' "
+                        "(no permissions remain for any service).",
+                        self.FRONTEND_CLIENT_ID,
+                    )
+                else:
+                    logger.error(
+                        "Failed to delete mapper from '%s': %s — %s",
+                        self.FRONTEND_CLIENT_ID,
+                        del_response.status_code,
+                        del_response.text,
+                    )
             return
 
-        # Delete old mapper if exists, then create updated one
-        if existing_mapper_id:
-            kc_admin.connection.raw_delete(f"{url}/{existing_mapper_id}")
-
+        # ---- 6. Persist the updated mapper ---------------------------------
         payload = self._build_mapper_payload(service_map)
-        response = kc_admin.connection.raw_post(url, data=json.dumps(payload))
 
-        if response.status_code in (200, 201):
+        try:
+            if existing_mapper_id:
+                # PUT updates in-place — atomic, avoids the delete→create window
+                # where concurrent services could produce a 409 or lose each
+                # other's entries.
+                payload["id"] = existing_mapper_id
+                response = kc_admin.connection.raw_put(
+                    f"{base_url}/{existing_mapper_id}",
+                    data=json.dumps(payload),
+                )
+                success_codes = (204,)
+            else:
+                response = kc_admin.connection.raw_post(
+                    base_url, data=json.dumps(payload)
+                )
+                success_codes = (201,)
+        except Exception as e:
+            logger.error(
+                "Network error persisting mapper on '%s': %s",
+                self.FRONTEND_CLIENT_ID,
+                e,
+            )
+            return
+
+        if response.status_code in success_codes:
             logger.info(
-                f"Synced mapper → '{self.FRONTEND_CLIENT_ID}' "
-                f"(service '{client_id}': {len(role_perms)} roles)"
+                "Synced role-permissions mapper on '%s' "
+                "(service '%s': %d roles).",
+                self.FRONTEND_CLIENT_ID,
+                client_id,
+                len(role_perms),
             )
         else:
             logger.error(
-                f"Mapper failed for '{self.FRONTEND_CLIENT_ID}': "
-                f"{response.status_code} {response.text}"
+                "Failed to sync mapper on '%s': %s — %s",
+                self.FRONTEND_CLIENT_ID,
+                response.status_code,
+                response.text,
             )

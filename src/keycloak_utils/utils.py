@@ -25,33 +25,38 @@ def verify_token(
         raise JWTDecodeError(str(e)) from e
 
 
-def schema_based(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        from django.db import connection
-        from django_tenants.utils import get_tenant_model
+def schema_based(func=None, *, schema=None):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from django.db import connection
+            from django_tenants.utils import get_tenant_model
 
-        from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
+            from .contrib.django.conf import KC_UTILS_TENANT_SCHEMA
 
-        is_postgres = connection.vendor == "postgresql"
-        if not is_postgres:
-            return func(*args, **kwargs)
+            is_postgres = connection.vendor == "postgresql"
+            if not is_postgres:
+                return func(*args, **kwargs)
 
-        schema = KC_UTILS_TENANT_SCHEMA
-        TenantModel = get_tenant_model()
-        if (
-            not TenantModel.objects.filter(schema_name=schema).exists()
-            and schema != "public"
-        ):
-            raise RuntimeError(
-                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
-            )
+            resolved_schema = schema if schema is not None else KC_UTILS_TENANT_SCHEMA
+            TenantModel = get_tenant_model()
+            if (
+                not TenantModel.objects.filter(schema_name=resolved_schema).exists()
+                and resolved_schema != "public"
+            ):
+                raise RuntimeError(
+                    f"TENANT_SCHEMA '{resolved_schema}' is not a valid tenant schema.",
+                )
 
-        connection.set_schema(schema)
+            connection.set_schema(resolved_schema)
 
-        try:
-            return func(*args, **kwargs)
-        finally:
-            connection.set_schema_to_public()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                connection.set_schema_to_public()
 
-    return wrapper
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator

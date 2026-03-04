@@ -915,12 +915,23 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
-        self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
+        try:
+            self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
+        except Exception as e:
+            logger.error(
+                "Failed to sync role-permissions mapper after role sync: %s", e
+            )
 
 
-@dataclass
-class KeycloakRolePermsMapper(ProtocolMapperMixin, KeycloakSync):
-    """Standalone sync class to create/update the role-permissions protocol mapper."""
+class KeycloakRolePermsMapper(ProtocolMapperMixin):
+    """
+    Standalone sync class that creates/updates the role-permissions protocol
+    mapper on the frontend client.
+
+    Intentionally does NOT inherit KeycloakSync — that base class triggers
+    live Keycloak API calls (client look-up/creation, generator setup, etc.)
+    in __post_init__, none of which are needed here.
+    """
 
     def run_routine(self) -> None:
         self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
