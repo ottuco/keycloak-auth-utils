@@ -32,11 +32,15 @@ def schema_based(func, schema):
                 f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
             )
 
+        previous_realm_name = kc_admin.connection.realm_name
         connection.set_schema(schema)
+        kc_admin.connection.realm_name = schema
         try:
             return func(*args, **kwargs)
         finally:
             connection.set_schema_to_public()
+            kc_admin.connection.realm_name = previous_realm_name
+
 
     return wrapper
 
@@ -201,7 +205,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
-        kc_admin.connection.realm_name = event_data["Realm_Name"]
+
         operation_info = event_data["operation_information"]
         policies = operation_info["apply_policy"]
         groups = groups = [
@@ -243,7 +247,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
-        kc_admin.connection.realm_name = event_data["Realm_Name"]
+
         group_name = role["role_name"]
         role_id = role["role_id"]
         return group_name, role_id
@@ -258,7 +262,6 @@ class EventStrategy(ABC):
         Returns:
             Optional[Tuple]: A tuple containing user-related information, or None if not valid.
         """
-        kc_admin.connection.realm_name = event_data["Realm_Name"]
         clients = kc_admin.get_clients()
         if not any(
             client.get("clientId") == KC_UTILS_KC_CLIENT_ID for client in clients
