@@ -159,8 +159,10 @@ class Command(BaseCommand):
     @contextmanager
     def update_event_listeners(cls, realm_name):
         # Pre-yield: silence listeners so sync events don't loop back.
+        original_listeners = None
         try:
             attrs = kc_admin.get_realm(realm_name)
+            original_listeners = attrs.get("eventsListeners", [])
             attrs |= {"eventsListeners": []}
             kc_admin.update_realm(realm_name, attrs)
         except (KeycloakGetError, KeycloakConnectionError):
@@ -176,7 +178,12 @@ class Command(BaseCommand):
         finally:
             try:
                 attrs = kc_admin.get_realm(realm_name)
-                attrs |= {"eventsListeners": ["custom-event-listener", "jboss-logging"]}
+                restored = (
+                    original_listeners
+                    if original_listeners is not None
+                    else ["custom-event-listener", "jboss-logging"]
+                )
+                attrs |= {"eventsListeners": restored}
                 kc_admin.update_realm(realm_name, attrs)
             except Exception as e:
                 logger.error(

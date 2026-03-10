@@ -62,7 +62,7 @@ class KeycloakAdminSingleton:
             logger.warning(
                 "KC_UTILS_KC_SERVER_URL is not set. "
                 "Set it in Django settings"
-                )
+            )
 
         if not self.validate_params_override(current_params):
             return

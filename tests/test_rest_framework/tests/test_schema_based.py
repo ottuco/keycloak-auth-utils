@@ -50,8 +50,9 @@ class TestSchemaBased:
 
         assert mock_admin.connection.realm_name == "original-realm"
 
-    def test_calls_set_schema_to_public_after_success(self):
-        """connection.set_schema_to_public() is called after success."""
+    def test_custom_schema_skips_set_schema_to_public_after_success(self):
+        """When is_custom_schema is True, set_schema_to_public() is NOT
+        called (caller manages schema externally)."""
         with (
             mock.patch(_kc_admin) as mock_admin,
             mock.patch(_connection) as mock_conn,
@@ -61,11 +62,11 @@ class TestSchemaBased:
             wrapped = schema_based(lambda: None, "tenant-a", True)
             wrapped()
 
-        mock_conn.set_schema_to_public.assert_called_once()
+        mock_conn.set_schema_to_public.assert_not_called()
 
-    def test_calls_set_schema_to_public_after_exception(self):
-        """connection.set_schema_to_public() is called even when the
-        wrapped function raises."""
+    def test_custom_schema_skips_set_schema_to_public_after_exception(self):
+        """When is_custom_schema is True, set_schema_to_public() is NOT
+        called even when the wrapped function raises."""
         with (
             mock.patch(_kc_admin) as mock_admin,
             mock.patch(_connection) as mock_conn,
@@ -79,6 +80,25 @@ class TestSchemaBased:
 
             with pytest.raises(ValueError):
                 wrapped()
+
+        mock_conn.set_schema_to_public.assert_not_called()
+
+    def test_non_custom_schema_calls_set_schema_to_public_after_success(self):
+        """When is_custom_schema is False, set_schema_to_public() IS called."""
+        with (
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch(_connection) as mock_conn,
+            mock.patch(
+                "django_tenants.utils.get_tenant_model"
+            ) as mock_get_tenant,
+        ):
+            mock_admin.connection.realm_name = "original"
+            mock_tenant_model = mock.MagicMock()
+            mock_tenant_model.objects.filter.return_value.exists.return_value = True
+            mock_get_tenant.return_value = mock_tenant_model
+
+            wrapped = schema_based(lambda: None, "tenant-a", False)
+            wrapped()
 
         mock_conn.set_schema_to_public.assert_called_once()
 

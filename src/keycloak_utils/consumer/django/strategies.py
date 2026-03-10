@@ -39,9 +39,9 @@ def schema_based(func, schema, is_custom_schema):
         try:
             return func(*args, **kwargs)
         finally:
-            connection.set_schema_to_public()
+            if not is_custom_schema:
+                connection.set_schema_to_public()
             kc_admin.connection.realm_name = previous_realm_name
-
 
     return wrapper
 
@@ -93,8 +93,11 @@ class EventStrategy(ABC):
             return
 
         # If tenant_schema is provided, wrap the operation strategy with schema_based
-        logger.info(f"Processing event in tenant schema: {tenant_schema}")
-        schema_based(lambda: operation_strategy(*event_info), tenant_schema, is_custom_schema)()
+        if tenant_schema is not None:
+            logger.info(f"Processing event in tenant schema: {tenant_schema}")
+            schema_based(lambda: operation_strategy(*event_info), tenant_schema, is_custom_schema)()
+        else:
+            operation_strategy(*event_info)
 
     def _validate_event(self, event_data: Dict) -> bool:
         """

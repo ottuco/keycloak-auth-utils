@@ -11,6 +11,12 @@ from ..kc_admin import kc_admin
 
 logger = logging.getLogger(__name__)
 
+# Warn when the serialised claim value exceeds this size (bytes).
+_CLAIM_SIZE_WARNING_THRESHOLD = 4096
+
+# Module-level cache for frontend client UUIDs (realm:clientId → uuid).
+_frontend_uuid_cache: dict = {}
+
 # Default lock settings — override via Django settings if needed.
 _LOCK_TIMEOUT = 120  # seconds before the lock auto-expires (safety net)
 _LOCK_RETRY_INTERVAL = 0.5  # seconds between retry attempts
@@ -29,7 +35,7 @@ def _mapper_lock(realm: str, frontend_client_id: str):
     Lets cache backend errors (e.g. Redis ConnectionError) propagate
     immediately rather than masking them as a timeout.
     """
-    lock_key = f"sync_protocol_mapper:{realm}:{frontend_client_id}"
+    lock_key = f"kc_utils:sync_protocol_mapper:{realm}:{frontend_client_id}"
     acquired = False
 
     for attempt in range(_LOCK_MAX_RETRIES):
@@ -109,9 +115,15 @@ class ProtocolMapperMixin:
     # ------------------------------------------------------------------ #
 
     def _get_frontend_client_uuid(self) -> Optional[str]:
+        realm = kc_admin.connection.realm_name
+        cache_key = f"{realm}:{self.FRONTEND_CLIENT_ID}"
+        if cache_key in _frontend_uuid_cache:
+            return _frontend_uuid_cache[cache_key]
+
         clients = kc_admin.get_clients()
         for client in clients:
             if client["clientId"] == self.FRONTEND_CLIENT_ID:
+                _frontend_uuid_cache[cache_key] = client["id"]
                 return client["id"]
         return None
 
@@ -277,6 +289,14 @@ class ProtocolMapperMixin:
 
         # ---- 6. Persist the updated mapper ---------------------------------
         payload = self._build_mapper_payload(service_map)
+
+        claim_value = payload["config"]["claim.value"]
+        if len(claim_value) > _CLAIM_SIZE_WARNING_THRESHOLD:
+            logger.warning(
+                "Role-permissions claim value is %d bytes — large claims may "
+                "cause HTTP header size issues for frontend clients.",
+                len(claim_value),
+            )
 
         try:
             if existing_mapper_id:
