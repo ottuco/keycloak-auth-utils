@@ -1,11 +1,50 @@
 import json
 import logging
+import time
+from contextlib import contextmanager
 from typing import Optional
+
+from django.core.cache import cache
 
 from ...contrib.django.conf import KC_UTILS_KC_FRONTEND_CLIENT_ID
 from ..kc_admin import kc_admin
 
 logger = logging.getLogger(__name__)
+
+# Default lock settings — override via Django settings if needed.
+_LOCK_TIMEOUT = 30  # seconds before the lock auto-expires (safety net)
+_LOCK_RETRY_INTERVAL = 0.5  # seconds between retry attempts
+_LOCK_MAX_RETRIES = 20  # give up after 10 seconds total
+
+
+@contextmanager
+def _mapper_lock(realm: str, frontend_client_id: str):
+    """Distributed lock scoped to a realm + frontend client.
+
+    Uses Django's cache.add() which is atomic on shared backends
+    (Redis, Memcached).  Falls back gracefully on LocMemCache
+    (single-process safety only).
+    """
+    lock_key = f"sync_protocol_mapper:{realm}:{frontend_client_id}"
+    acquired = False
+
+    for _ in range(_LOCK_MAX_RETRIES):
+        if cache.add(lock_key, "1", _LOCK_TIMEOUT):
+            acquired = True
+            break
+        time.sleep(_LOCK_RETRY_INTERVAL)
+
+    if not acquired:
+        raise TimeoutError(
+            f"Could not acquire mapper lock for realm='{realm}', "
+            f"client='{frontend_client_id}' after "
+            f"{_LOCK_MAX_RETRIES * _LOCK_RETRY_INTERVAL}s."
+        )
+
+    try:
+        yield
+    finally:
+        cache.delete(lock_key)
 
 
 class ProtocolMapperMixin:
@@ -101,6 +140,30 @@ class ProtocolMapperMixin:
             return
 
         base_url = self._mapper_base_url(frontend_uuid)
+        realm = kc_admin.connection.realm_name
+
+        # Acquire a distributed lock so concurrent callers (Celery tasks,
+        # consumer workers) serialise their GET → merge → PUT cycles and
+        # don't overwrite each other's service entries.
+        try:
+            lock_ctx = _mapper_lock(realm, self.FRONTEND_CLIENT_ID)
+            lock_ctx.__enter__()
+        except TimeoutError:
+            logger.error(
+                "Could not acquire mapper lock for '%s' in realm '%s' "
+                "— skipping sync to avoid stale-read overwrite.",
+                self.FRONTEND_CLIENT_ID,
+                realm,
+            )
+            return
+
+        try:
+            self._sync_protocol_mapper_locked(client_id, base_url)
+        finally:
+            lock_ctx.__exit__(None, None, None)
+
+    def _sync_protocol_mapper_locked(self, client_id: str, base_url: str) -> None:
+        """Inner method that runs inside the distributed lock."""
 
         # ---- 2. Fetch existing protocol mappers with status validation -----
         try:
@@ -194,9 +257,6 @@ class ProtocolMapperMixin:
 
         try:
             if existing_mapper_id:
-                # PUT updates in-place — atomic, avoids the delete→create window
-                # where concurrent services could produce a 409 or lose each
-                # other's entries.
                 payload["id"] = existing_mapper_id
                 response = kc_admin.connection.raw_put(
                     f"{base_url}/{existing_mapper_id}",

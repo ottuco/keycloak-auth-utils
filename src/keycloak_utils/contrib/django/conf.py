@@ -92,7 +92,7 @@ KC_UTILS_USER_SUPERADMIN_ROLE: str = getattr(
 )
 
 KC_UTILS_KC_SERVER_URL: str = getattr(
-    settings, "KC_UTILS_KC_SERVER_URL", "https://sso.ottu.dev/auth/"
+    settings, "KC_UTILS_KC_SERVER_URL", ""
 )
 
 KC_UTILS_KC_ADMIN_USER: str = getattr(settings, "KC_UTILS_KC_ADMIN_USER", "")

@@ -54,6 +54,7 @@ class Command(BaseCommand):
         "migrate_role_perms_mapper": {
             "classpath": "keycloak_utils.sync.django.core.KeycloakRolePermsMapper",
             "extra_args": lambda self: [],
+            "soft_time_limit": 1000,
         },
     }
 
@@ -204,14 +205,10 @@ class Command(BaseCommand):
         self.realm_name = options["realm_name"]
 
         if not options["server_url"]:
-            _fallback_url = "https://sso.ottu.dev/auth/"
-            logger.warning(
-                "Keycloak server URL is not configured — falling back to default '%s'. "
-                "Set KC_UTILS_KC_SERVER_URL in Django settings or pass --server-url.",
-                _fallback_url,
+            raise ValueError(
+                "Keycloak server URL is not configured. "
+                "Set KC_UTILS_KC_SERVER_URL in Django settings or pass --server-url."
             )
-            options["server_url"] = _fallback_url
-            self.kc_admin_config["server_url"] = _fallback_url
 
         # Re-initialize kc_admin with the actual CLI-provided credentials.
         # kc_admin is already live (initialized at module import time with

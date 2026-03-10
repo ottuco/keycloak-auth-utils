@@ -671,3 +671,151 @@ class TestKeycloakRolePermsMapperInstantiation:
     def test_does_not_inherit_keycloak_sync(self):
         """KeycloakRolePermsMapper intentionally avoids KeycloakSync base."""
         assert not issubclass(self.KeycloakRolePermsMapper, self.KeycloakSync)
+
+
+# ===================================================================
+# 7. Mapper Cleanup / Delete Path
+# ===================================================================
+
+
+class TestMapperCleanupDeletePath:
+    """Tests for the delete branch: when service_map becomes empty after
+    removing a service, sync_protocol_mapper should delete the mapper
+    via raw_delete (or handle errors gracefully)."""
+
+    def _setup_single_service_mapper(self, client_id="svc"):
+        """Helper: existing mapper with only one service entry, so removing
+        that service's perms empties the service_map."""
+        mapper = ConcreteMapper()
+        existing_data = {client_id: {"admin": ["perm1"]}}
+        existing_mapper = {
+            "name": mapper.MAPPER_NAME,
+            "id": "mapper-uuid-1",
+            "config": {"claim.value": json.dumps(existing_data)},
+        }
+        return mapper, [existing_mapper]
+
+    def test_deletes_mapper_when_service_map_empty(self):
+        """When get_role_permissions_map returns {} and the only service entry
+        is popped, raw_delete is called with the mapper id."""
+        mapper, mappers = self._setup_single_service_mapper()
+        get_resp = _mock_response(status_code=200, json_data=mappers)
+        del_resp = _mock_response(status_code=204)
+
+        with (
+            mock.patch.object(
+                mapper, "_get_frontend_client_uuid", return_value="fe-uuid"
+            ),
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch.object(
+                mapper, "get_role_permissions_map", return_value={}
+            ),
+        ):
+            mock_admin.connection.raw_get.return_value = get_resp
+            mock_admin.connection.raw_delete.return_value = del_resp
+            mock_admin.connection.realm_name = "test-realm"
+
+            mapper.sync_protocol_mapper("svc")
+
+        mock_admin.connection.raw_delete.assert_called_once()
+        assert "mapper-uuid-1" in mock_admin.connection.raw_delete.call_args[0][0]
+        mock_admin.connection.raw_put.assert_not_called()
+        mock_admin.connection.raw_post.assert_not_called()
+
+    def test_logs_info_on_successful_delete(self):
+        """Successful delete (204) logs an info message."""
+        mapper, mappers = self._setup_single_service_mapper()
+        get_resp = _mock_response(status_code=200, json_data=mappers)
+        del_resp = _mock_response(status_code=204)
+
+        with (
+            mock.patch.object(
+                mapper, "_get_frontend_client_uuid", return_value="fe-uuid"
+            ),
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch.object(
+                mapper, "get_role_permissions_map", return_value={}
+            ),
+            mock.patch("keycloak_utils.sync.django.mixins.logger") as mock_logger,
+        ):
+            mock_admin.connection.raw_get.return_value = get_resp
+            mock_admin.connection.raw_delete.return_value = del_resp
+            mock_admin.connection.realm_name = "test-realm"
+
+            mapper.sync_protocol_mapper("svc")
+
+        mock_logger.info.assert_called_once()
+        assert "Deleted" in mock_logger.info.call_args[0][0]
+
+    def test_logs_error_on_failed_delete(self):
+        """Non-204 response from raw_delete logs an error."""
+        mapper, mappers = self._setup_single_service_mapper()
+        get_resp = _mock_response(status_code=200, json_data=mappers)
+        del_resp = _mock_response(status_code=500, text="Internal Server Error")
+
+        with (
+            mock.patch.object(
+                mapper, "_get_frontend_client_uuid", return_value="fe-uuid"
+            ),
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch.object(
+                mapper, "get_role_permissions_map", return_value={}
+            ),
+            mock.patch("keycloak_utils.sync.django.mixins.logger") as mock_logger,
+        ):
+            mock_admin.connection.raw_get.return_value = get_resp
+            mock_admin.connection.raw_delete.return_value = del_resp
+            mock_admin.connection.realm_name = "test-realm"
+
+            mapper.sync_protocol_mapper("svc")
+
+        mock_logger.error.assert_called_once()
+        assert "Failed to delete" in mock_logger.error.call_args[0][0]
+
+    def test_network_error_on_delete_logs_and_returns(self):
+        """When raw_delete raises an exception, it logs and returns early."""
+        mapper, mappers = self._setup_single_service_mapper()
+        get_resp = _mock_response(status_code=200, json_data=mappers)
+
+        with (
+            mock.patch.object(
+                mapper, "_get_frontend_client_uuid", return_value="fe-uuid"
+            ),
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch.object(
+                mapper, "get_role_permissions_map", return_value={}
+            ),
+            mock.patch("keycloak_utils.sync.django.mixins.logger") as mock_logger,
+        ):
+            mock_admin.connection.raw_get.return_value = get_resp
+            mock_admin.connection.raw_delete.side_effect = ConnectionError("timeout")
+            mock_admin.connection.realm_name = "test-realm"
+
+            mapper.sync_protocol_mapper("svc")
+
+        mock_logger.error.assert_called_once()
+        assert "Network error deleting" in mock_logger.error.call_args[0][0]
+
+    def test_no_delete_when_no_existing_mapper(self):
+        """When service_map is empty but no mapper exists yet, just returns
+        without calling raw_delete."""
+        mapper = ConcreteMapper()
+        get_resp = _mock_response(status_code=200, json_data=[])
+
+        with (
+            mock.patch.object(
+                mapper, "_get_frontend_client_uuid", return_value="fe-uuid"
+            ),
+            mock.patch(_kc_admin) as mock_admin,
+            mock.patch.object(
+                mapper, "get_role_permissions_map", return_value={}
+            ),
+        ):
+            mock_admin.connection.raw_get.return_value = get_resp
+            mock_admin.connection.realm_name = "test-realm"
+
+            mapper.sync_protocol_mapper("svc")
+
+        mock_admin.connection.raw_delete.assert_not_called()
+        mock_admin.connection.raw_put.assert_not_called()
+        mock_admin.connection.raw_post.assert_not_called()

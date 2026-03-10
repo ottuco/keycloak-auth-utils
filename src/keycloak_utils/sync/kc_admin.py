@@ -58,6 +58,14 @@ class KeycloakAdminSingleton:
             "client_id": client_id,
         }
 
+        if not server_url:
+            logger.warning(
+                "KC_UTILS_KC_SERVER_URL is not set — skipping KeycloakAdmin "
+                "initialization. Set it in Django settings or pass --server-url "
+                "to the management command.",
+            )
+            return
+
         if not self.validate_params_override(current_params):
             return
 

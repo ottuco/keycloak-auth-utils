@@ -281,7 +281,7 @@ These environment variables are required for integrating Keycloak utilities into
 
 | Environment Variable           | Default Value             | Description                                                                                                   |
 |--------------------------------|---------------------------|---------------------------------------------------------------------------------------------------------------|
-| `KC_UTILS_KC_SERVER_URL`       | `https://sso.ottu.dev/auth/` | The base URL of the Keycloak server. Required for making API requests.                                        |
+| `KC_UTILS_KC_SERVER_URL`       | ``                        | The base URL of the Keycloak server. Required for making API requests.                                        |
 | `KC_UTILS_KC_REALM`            | `syncertest.ottu.dev`     | The realm used to manage users, groups, and roles.                                                            |
 | `KC_UTILS_KC_CLIENT_ID`        | `payout`                  | The client ID registered in the Keycloak realm.                                                               |
 | `KC_UTILS_KC_CLIENT_SECRET`    | ``                        | The client secret used for authentication.                                                                    |
