@@ -42,5 +42,8 @@ class PredefinedRolesProviderNotConfigured(RuntimeError):
         )
 
 
-if not conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER:
-    raise PredefinedRolesProviderNotConfigured("KC_UTILS_PREDEFINED_ROLES_PROVIDER")
+def get_predefined_roles_provider():
+    """Return the configured predefined-roles callable, or raise if unset."""
+    if not conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER:
+        raise PredefinedRolesProviderNotConfigured("KC_UTILS_PREDEFINED_ROLES_PROVIDER")
+    return load_callable_from_path(conf.KC_UTILS_PREDEFINED_ROLES_PROVIDER)

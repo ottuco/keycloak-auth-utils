@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import logging
 from abc import abstractmethod
@@ -11,12 +13,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.db.models import Q, QuerySet
 
-from ...contrib.django.conf import (
-    KC_UTILS_KC_CLIENT_ID,
-    KC_UTILS_PREDEFINED_ROLES_PROVIDER,
-)
+from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from ..kc_admin import kc_admin
-from ..predefined import load_callable_from_path
+from ..predefined import get_predefined_roles_provider
+from .mixins import ProtocolMapperMixin
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -798,7 +798,7 @@ class KeycloakPermission(KeycloakSync):
 
 
 @dataclass
-class KeycloakRole(KeycloakSync):
+class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
     current_role: str = None  # The current role ID in Keycloak
     current_policy: str = None  # The current policy ID in Keycloak
 
@@ -914,6 +914,27 @@ class KeycloakRole(KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
+        try:
+            self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
+        except Exception as e:
+            logger.error(
+                "Failed to sync role-permissions mapper after role sync: %s", e
+            )
+
+
+class KeycloakRolePermsMapper(ProtocolMapperMixin):
+    """
+    Standalone sync class that creates/updates the role-permissions protocol
+    mapper on the frontend client.
+
+    Intentionally does NOT inherit KeycloakSync — that base class triggers
+    live Keycloak API calls (client look-up/creation, generator setup, etc.)
+    in __post_init__, none of which are needed here.
+    """
+
+    def run_routine(self) -> None:
+        self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
+
 
 @dataclass
 class KeycloakPredefinedRole(KeycloakRole):
@@ -925,7 +946,7 @@ class KeycloakPredefinedRole(KeycloakRole):
         Internal method to create a generator that fetches all Group objects from Django.
         Yields: Group objects.
         """
-        roles_predefined = load_callable_from_path(KC_UTILS_PREDEFINED_ROLES_PROVIDER)()
+        roles_predefined = get_predefined_roles_provider()()
         groups = roles_predefined
         yield from groups
 

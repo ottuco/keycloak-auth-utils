@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from django.conf import settings
 
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")
@@ -92,11 +94,8 @@ KC_UTILS_USER_SUPERADMIN_ROLE: str = getattr(
 )
 
 KC_UTILS_KC_SERVER_URL: str = getattr(
-    settings,
-    "KC_UTILS_KC_SERVER_URL",
-    "https://sso.ottu.dev/auth/",
+    settings, "KC_UTILS_KC_SERVER_URL", ""
 )
-KC_UTILS_KC_REALM: str = getattr(settings, "KC_UTILS_KC_REALM", "")
 
 KC_UTILS_KC_ADMIN_USER: str = getattr(settings, "KC_UTILS_KC_ADMIN_USER", "")
 KC_UTILS_KC_ADMIN_PASSWORD: str = getattr(settings, "KC_UTILS_KC_ADMIN_PASSWORD", "")
@@ -106,6 +105,9 @@ KC_UTILS_KC_ADMIN_ID: str = getattr(settings, "KC_UTILS_KC_ADMIN_ID", "admin-cli
 
 KC_UTILS_KC_CLIENT_ID: str = getattr(settings, "KC_UTILS_KC_CLIENT_ID", "core")
 KC_UTILS_KC_CLIENT_SECRET: str = getattr(settings, "KC_UTILS_KC_CLIENT_SECRET", "")
+KC_UTILS_KC_FRONTEND_CLIENT_ID: str = getattr(
+    settings, "KC_UTILS_KC_FRONTEND_CLIENT_ID", "frontend"
+)
 
 KC_UTILS_CREATE_QUEUES: dict = getattr(settings, "KC_UTILS_CREATE_QUEUES", {})
 KC_UTILS_CONSUMER_QUEUES: dict = getattr(settings, "KC_UTILS_CONSUMER_QUEUES", {})

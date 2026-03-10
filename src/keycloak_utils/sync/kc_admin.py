@@ -10,7 +10,7 @@ from keycloak.exceptions import (
 
 from ..contrib.django import conf as settings
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class KeycloakAdminSingleton:
@@ -58,6 +58,12 @@ class KeycloakAdminSingleton:
             "client_id": client_id,
         }
 
+        if not server_url:
+            logger.warning(
+                "KC_UTILS_KC_SERVER_URL is not set. "
+                "Set it in Django settings"
+            )
+
         if not self.validate_params_override(current_params):
             return
 
@@ -71,6 +77,10 @@ class KeycloakAdminSingleton:
         self._initialized = True
 
     def __getattr__(self, item):
+        # Let dunder lookups fail normally so standard Python protocols
+        # (mock, pickle, copy, etc.) work even before initialization.
+        if item.startswith("__") and item.endswith("__"):
+            raise AttributeError(item)
         if not self._initialized:
             raise Exception(
                 "KeycloakAdmin is not initialized. Call 'initialize()' first.",

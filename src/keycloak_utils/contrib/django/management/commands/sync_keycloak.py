@@ -51,6 +51,11 @@ class Command(BaseCommand):
             "extra_args": lambda self: [],
             "soft_time_limit": 1000,
         },
+        "migrate_role_perms_mapper": {
+            "classpath": "keycloak_utils.sync.django.core.KeycloakRolePermsMapper",
+            "extra_args": lambda self: [],
+            "soft_time_limit": 1000,
+        },
     }
 
     def add_arguments(self, parser):
@@ -83,6 +88,12 @@ class Command(BaseCommand):
             "-migrate-predefined-groups",
             action="store_true",
             help="Migrate predefined roles from Django to Keycloak",
+            default=False,
+        )
+        parser.add_argument(
+            "-migrate-role-perms-mapper",
+            action="store_true",
+            help="Sync role-permissions protocol mapper to Keycloak client",
             default=False,
         )
         parser.add_argument(
@@ -147,30 +158,50 @@ class Command(BaseCommand):
     @classmethod
     @contextmanager
     def update_event_listeners(cls, realm_name):
+        # Pre-yield: silence listeners so sync events don't loop back.
+        original_listeners = None
         try:
             attrs = kc_admin.get_realm(realm_name)
+            original_listeners = attrs.get("eventsListeners", [])
             attrs |= {"eventsListeners": []}
             kc_admin.update_realm(realm_name, attrs)
-        except KeycloakGetError:
-            pass
-        finally:
-            yield
-            attrs = kc_admin.get_realm(realm_name)
-            attrs |= {"eventsListeners": ["custom-event-listener", "jboss-logging"]}
-            kc_admin.update_realm(realm_name, attrs)
+        except (KeycloakGetError, KeycloakConnectionError):
+            logger.warning(
+                "Could not disable event listeners for realm '%s' — "
+                "proceeding without disabling them.",
+                realm_name,
+            )
 
-    @schema_based
+        # Yield control to the sync body; restore listeners regardless of outcome.
+        try:
+            yield
+        finally:
+            try:
+                attrs = kc_admin.get_realm(realm_name)
+                restored = (
+                    original_listeners
+                    if original_listeners is not None
+                    else ["custom-event-listener", "jboss-logging"]
+                )
+                attrs |= {"eventsListeners": restored}
+                kc_admin.update_realm(realm_name, attrs)
+            except Exception as e:
+                logger.error(
+                    "Failed to restore event listeners for realm '%s': %s",
+                    realm_name,
+                    e,
+                )
+
     def handle(self, *args, **options):
         self._validate_options(options)
+
         self.perms = (
             self.desired_models_perms_map if self.desired_models_perms_map else {}
         )
-
         self.clients = {
             "private": options["private_clients"],
             "public": options["public_clients"],
         }
-
         self.kc_admin_config = {
             "server_url": options["server_url"],
             "username": options["admin_username"],
@@ -178,14 +209,43 @@ class Command(BaseCommand):
             "client_id": options["admin_id"],
             "user_realm_name": options["admin_realm"],
         }
-
         self.realm_name = options["realm_name"]
 
-        with self.update_event_listeners(options["realm_name"]):
-            handler_routine = (
-                self.async_handle if options["delegate_celery"] else self.sync_handle
+        if not options["server_url"]:
+            raise ValueError(
+                "Keycloak server URL is not configured. "
+                "Set KC_UTILS_KC_SERVER_URL in Django settings or pass --server-url."
             )
-            handler_routine(options)
+
+        # Re-initialize kc_admin with the actual CLI-provided credentials.
+        # kc_admin is already live (initialized at module import time with
+        # Django settings defaults), but the user may have passed --server-url,
+        # --admin-username, etc. that differ from those defaults.  This call
+        # ensures update_event_listeners and all sync routines use the correct
+        # credentials.  sync_handle also calls initialize() — that second call
+        # always creates a fresh KeycloakAdmin connection (harmless duplicate
+        # when params are identical).
+        try:
+            kc_admin.initialize(**self.kc_admin_config)
+        except KeycloakConnectionError:
+            logger.error(
+                "Cannot connect to Keycloak at '%s'. "
+                "Verify the server URL and admin credentials.",
+                options["server_url"],
+            )
+            return
+
+        @schema_based(schema=self.realm_name)
+        def _run_sync():
+            with self.update_event_listeners(self.realm_name):
+                handler_routine = (
+                    self.async_handle
+                    if options["delegate_celery"]
+                    else self.sync_handle
+                )
+                handler_routine(options)
+
+        _run_sync()
 
     def sync_handle(self, options):
         try:

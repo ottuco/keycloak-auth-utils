@@ -10,32 +10,38 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 
-from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID, KC_UTILS_KC_REALM
+from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+from ...sync.django.mixins import ProtocolMapperMixin
 from ...sync.kc_admin import kc_admin
 
 logger = logging.getLogger("keycloak_event_consumer")
 User = get_user_model()
 
 
-def schema_based(func, schema):
+def schema_based(func, schema, is_custom_schema):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from django_tenants.utils import get_tenant_model
+        if not is_custom_schema:
+            from django_tenants.utils import get_tenant_model
+            TenantModel = get_tenant_model()
+            if (
+                not TenantModel.objects.filter(schema_name=schema).exists()
+                and schema != "public"
+            ):
+                raise RuntimeError(
+                    f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
+                )
 
-        TenantModel = get_tenant_model()
-        if (
-            not TenantModel.objects.filter(schema_name=schema).exists()
-            and schema != "public"
-        ):
-            raise RuntimeError(
-                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
-            )
+            connection.set_schema(schema)
 
-        connection.set_schema(schema)
+        previous_realm_name = kc_admin.connection.realm_name
+        kc_admin.connection.realm_name = schema
         try:
             return func(*args, **kwargs)
         finally:
-            connection.set_schema_to_public()
+            if not is_custom_schema:
+                connection.set_schema_to_public()
+            kc_admin.connection.realm_name = previous_realm_name
 
     return wrapper
 
@@ -87,11 +93,11 @@ class EventStrategy(ABC):
             return
 
         # If tenant_schema is provided, wrap the operation strategy with schema_based
-        if tenant_schema and not is_custom_schema:
+        if tenant_schema is not None:
             logger.info(f"Processing event in tenant schema: {tenant_schema}")
-            schema_based(lambda: operation_strategy(*event_info), tenant_schema)()
+            schema_based(lambda: operation_strategy(*event_info), tenant_schema, is_custom_schema)()
         else:
-            operation_strategy(*event_info, tenant_schema=tenant_schema)
+            operation_strategy(*event_info)
 
     def _validate_event(self, event_data: Dict) -> bool:
         """
@@ -200,6 +206,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
+
         operation_info = event_data["operation_information"]
         policies = operation_info["apply_policy"]
         groups = groups = [
@@ -241,6 +248,7 @@ class EventStrategy(ABC):
                 f"{KC_UTILS_KC_CLIENT_ID} is not valid for current realm, nothing will be done",
             )
             return
+
         group_name = role["role_name"]
         role_id = role["role_id"]
         return group_name, role_id
@@ -255,7 +263,6 @@ class EventStrategy(ABC):
         Returns:
             Optional[Tuple]: A tuple containing user-related information, or None if not valid.
         """
-        kc_admin.connection.realm_name = event_data["Realm_Name"]
         clients = kc_admin.get_clients()
         if not any(
             client.get("clientId") == KC_UTILS_KC_CLIENT_ID for client in clients
@@ -324,7 +331,7 @@ class EventStrategy(ABC):
         return User
 
 
-class RoleEventStrategy(EventStrategy):
+class RoleEventStrategy(ProtocolMapperMixin, EventStrategy):
     """
     Strategy to handle events related to roles, such as create and delete operations.
     """
@@ -377,9 +384,19 @@ class RoleEventStrategy(EventStrategy):
             group = self.group_model.objects.get(name=group_name)
             # self.kc_role.delete_policy(group)  # Placeholder for policy deletion
             group.delete()
-            logger.info(f"group {group_name} deleted")
+            logger.info("Group '%s' deleted.", group_name)
         except Exception as e:
-            logger.error(f"Error deleting group {group_name}: {e}")
+            logger.error("Error deleting group '%s': %s", group_name, e)
+            return  # Do not sync mapper when the deletion itself failed.
+
+        try:
+            self.sync_protocol_mapper(self.ms_name)
+        except Exception as e:
+            logger.error(
+                "Error syncing protocol mapper after deleting group '%s': %s",
+                group_name,
+                e,
+            )
 
 
 class UserEventStrategy(EventStrategy):
@@ -475,7 +492,7 @@ class UserEventStrategy(EventStrategy):
         pass
 
 
-class PermissionEventStrategy(EventStrategy):
+class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
     """
     Strategy for handling permission-related events such as creation, update, and assignment to groups.
     """
@@ -611,28 +628,71 @@ class PermissionEventStrategy(EventStrategy):
         )
 
         if remove_perm_groups:
-            list(
-                map(
-                    lambda group: group.permissions.remove(permission),
+            failed = []
+            for group in remove_perm_groups:
+                try:
+                    group.permissions.remove(permission)
+                except Exception as e:
+                    failed.append(group)
+                    logger.error(
+                        "Failed to remove permission '%s' from group '%s': %s",
+                        permission,
+                        group,
+                        e,
+                    )
+            if failed:
+                logger.warning(
+                    "Removed permission '%s' from some groups in %s, "
+                    "but %d group(s) failed.",
+                    permission,
                     remove_perm_groups,
-                ),
-            )
-            logger.info(
-                f"Removed permission {permission} from groups {remove_perm_groups}",
-            )
+                    len(failed),
+                )
+            else:
+                logger.info(
+                    "Removed permission '%s' from groups %s",
+                    permission,
+                    remove_perm_groups,
+                )
         else:
             logger.info("No groups need this permission removed")
 
         if add_perm_groups:
-            list(
-                map(
-                    lambda group: group.permissions.add(permission),
+            failed = []
+            for group in add_perm_groups:
+                try:
+                    group.permissions.add(permission)
+                except Exception as e:
+                    failed.append(group)
+                    logger.error(
+                        "Failed to add permission '%s' to group '%s': %s",
+                        permission,
+                        group,
+                        e,
+                    )
+            if failed:
+                logger.warning(
+                    "Added permission '%s' to some groups in %s, "
+                    "but %d group(s) failed.",
+                    permission,
                     add_perm_groups,
-                ),
-            )
-            logger.info(f"Added permission {permission} to groups {add_perm_groups}")
+                    len(failed),
+                )
+            else:
+                logger.info(
+                    "Added permission '%s' to groups %s",
+                    permission,
+                    add_perm_groups,
+                )
         else:
             logger.info("No groups need this permission added.")
+
+        try:
+            self.sync_protocol_mapper(self.ms_name)
+        except Exception as e:
+            logger.error(
+                "Error syncing protocol mapper after updating permissions: %s", e
+            )
 
     def _handle_delete(self, *args, **kwargs):
         """
@@ -675,12 +735,15 @@ class BaseEventStrategyFactory:
         Raises:
             KeyError: If the event type is not found in the event map.
         """
-        logger.info(
-            f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!",
-        )
-        if event_type not in self.event_map.keys():
+        if event_type not in self.event_map:
             raise KeyError(f'the event_type "{event_type}" is not registered')
 
+        logger.info(
+            "the event_type in the factory %s is %s event, %s will handle it!",
+            self.__class__.__name__,
+            event_type,
+            self.event_map[event_type].__name__,
+        )
         return self.event_map[event_type]()
 
 
