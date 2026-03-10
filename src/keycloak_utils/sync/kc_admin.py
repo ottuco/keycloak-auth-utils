@@ -11,7 +11,7 @@ from keycloak.exceptions import (
 
 from ..contrib.django import conf as settings
 
-logger = logging.getLogger(__name__)
+logger = logging.Logger(__name__)
 
 
 class KeycloakAdminSingleton:

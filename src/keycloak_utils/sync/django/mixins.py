@@ -31,9 +31,11 @@ def _mapper_lock(realm: str, frontend_client_id: str):
     (Redis, Memcached).  Falls back gracefully on LocMemCache
     (single-process safety only).
 
-    Raises TimeoutError if the lock cannot be acquired.
-    Lets cache backend errors (e.g. Redis ConnectionError) propagate
-    immediately rather than masking them as a timeout.
+    Raises TimeoutError if the lock cannot be acquired within
+    _LOCK_MAX_RETRIES * _LOCK_RETRY_INTERVAL seconds.  Cache backend
+    errors (e.g. Redis ConnectionError) are logged and retried within
+    the same retry budget — a sustained backend outage surfaces as
+    TimeoutError.
     """
     lock_key = f"kc_utils:sync_protocol_mapper:{realm}:{frontend_client_id}"
     acquired = False
