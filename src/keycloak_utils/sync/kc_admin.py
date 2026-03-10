@@ -79,6 +79,10 @@ class KeycloakAdminSingleton:
         self._initialized = True
 
     def __getattr__(self, item):
+        # Let dunder lookups fail normally so standard Python protocols
+        # (mock, pickle, copy, etc.) work even before initialization.
+        if item.startswith("__") and item.endswith("__"):
+            raise AttributeError(item)
         if not self._initialized:
             raise Exception(
                 "KeycloakAdmin is not initialized. Call 'initialize()' first.",
