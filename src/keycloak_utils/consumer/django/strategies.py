@@ -18,22 +18,23 @@ logger = logging.getLogger("keycloak_event_consumer")
 User = get_user_model()
 
 
-def schema_based(func, schema):
+def schema_based(func, schema, is_custom_schema):
     @wraps(func)
     def wrapper(*args, **kwargs):
         from django_tenants.utils import get_tenant_model
+        if not is_custom_schema():
+            TenantModel = get_tenant_model()
+            if (
+                not TenantModel.objects.filter(schema_name=schema).exists()
+                and schema != "public"
+            ):
+                raise RuntimeError(
+                    f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
+                )
 
-        TenantModel = get_tenant_model()
-        if (
-            not TenantModel.objects.filter(schema_name=schema).exists()
-            and schema != "public"
-        ):
-            raise RuntimeError(
-                f"TENANT_SCHEMA '{schema}' is not a valid tenant schema.",
-            )
+            connection.set_schema(schema)
 
         previous_realm_name = kc_admin.connection.realm_name
-        connection.set_schema(schema)
         kc_admin.connection.realm_name = schema
         try:
             return func(*args, **kwargs)
@@ -92,11 +93,8 @@ class EventStrategy(ABC):
             return
 
         # If tenant_schema is provided, wrap the operation strategy with schema_based
-        if tenant_schema and not is_custom_schema:
-            logger.info(f"Processing event in tenant schema: {tenant_schema}")
-            schema_based(lambda: operation_strategy(*event_info), tenant_schema)()
-        else:
-            operation_strategy(*event_info, tenant_schema=tenant_schema)
+        logger.info(f"Processing event in tenant schema: {tenant_schema}")
+        schema_based(lambda: operation_strategy(*event_info), tenant_schema, is_custom_schema)()
 
     def _validate_event(self, event_data: Dict) -> bool:
         """
