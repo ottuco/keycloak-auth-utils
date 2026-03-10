@@ -21,8 +21,8 @@ User = get_user_model()
 def schema_based(func, schema, is_custom_schema):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from django_tenants.utils import get_tenant_model
         if not is_custom_schema:
+            from django_tenants.utils import get_tenant_model
             TenantModel = get_tenant_model()
             if (
                 not TenantModel.objects.filter(schema_name=schema).exists()

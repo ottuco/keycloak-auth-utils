@@ -27,7 +27,7 @@ class TestSchemaBased:
                 # During execution, realm should be set to the schema
                 assert mock_admin.connection.realm_name == "new-realm"
 
-            wrapped = schema_based(inner, "new-realm", lambda: True)
+            wrapped = schema_based(inner, "new-realm", True)
             wrapped()
 
         assert mock_admin.connection.realm_name == "original-realm"
@@ -43,7 +43,7 @@ class TestSchemaBased:
             def inner():
                 raise RuntimeError("boom")
 
-            wrapped = schema_based(inner, "new-realm", lambda: True)
+            wrapped = schema_based(inner, "new-realm", True)
 
             with pytest.raises(RuntimeError, match="boom"):
                 wrapped()
@@ -58,7 +58,7 @@ class TestSchemaBased:
         ):
             mock_admin.connection.realm_name = "original"
 
-            wrapped = schema_based(lambda: None, "tenant-a", lambda: True)
+            wrapped = schema_based(lambda: None, "tenant-a", True)
             wrapped()
 
         mock_conn.set_schema_to_public.assert_called_once()
@@ -75,7 +75,7 @@ class TestSchemaBased:
             def inner():
                 raise ValueError("fail")
 
-            wrapped = schema_based(inner, "tenant-b", lambda: True)
+            wrapped = schema_based(inner, "tenant-b", True)
 
             with pytest.raises(ValueError):
                 wrapped()
@@ -96,14 +96,14 @@ class TestSchemaBased:
             def inner():
                 observed_realm["during"] = mock_admin.connection.realm_name
 
-            wrapped = schema_based(inner, "during-realm", lambda: True)
+            wrapped = schema_based(inner, "during-realm", True)
             wrapped()
 
         assert observed_realm["during"] == "during-realm"
         assert mock_admin.connection.realm_name == "before"
 
     def test_non_custom_schema_sets_tenant_schema(self):
-        """When is_custom_schema returns False, connection.set_schema is
+        """When is_custom_schema is False, connection.set_schema is
         called with the schema value."""
         with (
             mock.patch(_kc_admin) as mock_admin,
@@ -118,13 +118,13 @@ class TestSchemaBased:
             mock_tenant_model.objects.filter.return_value.exists.return_value = True
             mock_get_tenant.return_value = mock_tenant_model
 
-            wrapped = schema_based(lambda: None, "tenant-x", lambda: False)
+            wrapped = schema_based(lambda: None, "tenant-x", False)
             wrapped()
 
         mock_conn.set_schema.assert_called_once_with("tenant-x")
 
     def test_custom_schema_skips_set_schema(self):
-        """When is_custom_schema returns True, connection.set_schema is NOT
+        """When is_custom_schema is True, connection.set_schema is NOT
         called (caller manages schema externally)."""
         with (
             mock.patch(_kc_admin) as mock_admin,
@@ -132,7 +132,7 @@ class TestSchemaBased:
         ):
             mock_admin.connection.realm_name = "original"
 
-            wrapped = schema_based(lambda: None, "tenant-y", lambda: True)
+            wrapped = schema_based(lambda: None, "tenant-y", True)
             wrapped()
 
         mock_conn.set_schema.assert_not_called()
@@ -145,7 +145,7 @@ class TestSchemaBased:
         ):
             mock_admin.connection.realm_name = "original"
 
-            wrapped = schema_based(lambda: "result-42", "realm", lambda: True)
+            wrapped = schema_based(lambda: "result-42", "realm", True)
             result = wrapped()
 
         assert result == "result-42"
