@@ -12,9 +12,9 @@ from ..kc_admin import kc_admin
 logger = logging.getLogger(__name__)
 
 # Default lock settings — override via Django settings if needed.
-_LOCK_TIMEOUT = 30  # seconds before the lock auto-expires (safety net)
+_LOCK_TIMEOUT = 120  # seconds before the lock auto-expires (safety net)
 _LOCK_RETRY_INTERVAL = 0.5  # seconds between retry attempts
-_LOCK_MAX_RETRIES = 20  # give up after 10 seconds total
+_LOCK_MAX_RETRIES = 40  # give up after 20 seconds total
 
 
 @contextmanager

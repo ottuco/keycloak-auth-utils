@@ -22,7 +22,7 @@ def schema_based(func, schema, is_custom_schema):
     @wraps(func)
     def wrapper(*args, **kwargs):
         from django_tenants.utils import get_tenant_model
-        if not is_custom_schema():
+        if not is_custom_schema:
             TenantModel = get_tenant_model()
             if (
                 not TenantModel.objects.filter(schema_name=schema).exists()
