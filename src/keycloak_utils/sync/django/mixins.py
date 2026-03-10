@@ -24,27 +24,49 @@ def _mapper_lock(realm: str, frontend_client_id: str):
     Uses Django's cache.add() which is atomic on shared backends
     (Redis, Memcached).  Falls back gracefully on LocMemCache
     (single-process safety only).
+
+    Raises TimeoutError if the lock cannot be acquired.
+    Lets cache backend errors (e.g. Redis ConnectionError) propagate
+    immediately rather than masking them as a timeout.
     """
     lock_key = f"sync_protocol_mapper:{realm}:{frontend_client_id}"
     acquired = False
 
-    for _ in range(_LOCK_MAX_RETRIES):
-        if cache.add(lock_key, "1", _LOCK_TIMEOUT):
-            acquired = True
-            break
+    for attempt in range(_LOCK_MAX_RETRIES):
+        try:
+            if cache.add(lock_key, "1", _LOCK_TIMEOUT):
+                acquired = True
+                break
+        except Exception:
+            logger.warning(
+                "Cache backend error on lock attempt %d/%d for '%s' "
+                "— will retry.",
+                attempt + 1,
+                _LOCK_MAX_RETRIES,
+                lock_key,
+            )
         time.sleep(_LOCK_RETRY_INTERVAL)
 
     if not acquired:
         raise TimeoutError(
             f"Could not acquire mapper lock for realm='{realm}', "
             f"client='{frontend_client_id}' after "
-            f"{_LOCK_MAX_RETRIES * _LOCK_RETRY_INTERVAL}s."
+            f"{_LOCK_MAX_RETRIES * _LOCK_RETRY_INTERVAL}s "
+            f"(cache backend may be unavailable)."
         )
 
     try:
         yield
     finally:
-        cache.delete(lock_key)
+        try:
+            cache.delete(lock_key)
+        except Exception:
+            logger.warning(
+                "Failed to release mapper lock '%s' — "
+                "it will auto-expire in %ds.",
+                lock_key,
+                _LOCK_TIMEOUT,
+            )
 
 
 class ProtocolMapperMixin:
@@ -146,8 +168,8 @@ class ProtocolMapperMixin:
         # consumer workers) serialise their GET → merge → PUT cycles and
         # don't overwrite each other's service entries.
         try:
-            lock_ctx = _mapper_lock(realm, self.FRONTEND_CLIENT_ID)
-            lock_ctx.__enter__()
+            with _mapper_lock(realm, self.FRONTEND_CLIENT_ID):
+                self._sync_protocol_mapper_locked(client_id, base_url)
         except TimeoutError:
             logger.error(
                 "Could not acquire mapper lock for '%s' in realm '%s' "
@@ -155,12 +177,13 @@ class ProtocolMapperMixin:
                 self.FRONTEND_CLIENT_ID,
                 realm,
             )
-            return
-
-        try:
-            self._sync_protocol_mapper_locked(client_id, base_url)
-        finally:
-            lock_ctx.__exit__(None, None, None)
+        except Exception:
+            logger.exception(
+                "Unexpected error during locked mapper sync for '%s' "
+                "in realm '%s'.",
+                self.FRONTEND_CLIENT_ID,
+                realm,
+            )
 
     def _sync_protocol_mapper_locked(self, client_id: str, base_url: str) -> None:
         """Inner method that runs inside the distributed lock."""
