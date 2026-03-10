@@ -13,12 +13,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.db.models import Q, QuerySet
 
-from ...contrib.django.conf import (
-    KC_UTILS_KC_CLIENT_ID,
-    KC_UTILS_PREDEFINED_ROLES_PROVIDER,
-)
+from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
 from ..kc_admin import kc_admin
-from ..predefined import load_callable_from_path
+from ..predefined import get_predefined_roles_provider
 from .mixins import ProtocolMapperMixin
 
 logger = logging.getLogger(__name__)
@@ -949,7 +946,7 @@ class KeycloakPredefinedRole(KeycloakRole):
         Internal method to create a generator that fetches all Group objects from Django.
         Yields: Group objects.
         """
-        roles_predefined = load_callable_from_path(KC_UTILS_PREDEFINED_ROLES_PROVIDER)()
+        roles_predefined = get_predefined_roles_provider()()
         groups = roles_predefined
         yield from groups
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from django.conf import settings
 
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")

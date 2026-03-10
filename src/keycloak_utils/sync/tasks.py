@@ -1,8 +1,11 @@
+import logging
 from importlib import import_module
 
 from celery import shared_task
 
 from keycloak_utils.sync.kc_admin import kc_admin
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(name="keycloak_utils.sync.run_sync_routine_by_class_name")

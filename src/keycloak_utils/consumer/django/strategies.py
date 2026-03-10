@@ -735,12 +735,15 @@ class BaseEventStrategyFactory:
         Raises:
             KeyError: If the event type is not found in the event map.
         """
-        logger.info(
-            f"the event_type in the factory {self.__class__.__name__} is {event_type} event, {self.event_map[event_type].__name__} will handle it!",
-        )
-        if event_type not in self.event_map.keys():
+        if event_type not in self.event_map:
             raise KeyError(f'the event_type "{event_type}" is not registered')
 
+        logger.info(
+            "the event_type in the factory %s is %s event, %s will handle it!",
+            self.__class__.__name__,
+            event_type,
+            self.event_map[event_type].__name__,
+        )
         return self.event_map[event_type]()
 
 
