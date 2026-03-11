@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 
 from keycloak import KeycloakAdmin, KeycloakPostError
 from keycloak.exceptions import (
@@ -10,7 +11,7 @@ from keycloak.exceptions import (
 
 from ..contrib.django import conf as settings
 
-logger = logging.getLogger(__name__)
+logger = logging.Logger(__name__)
 
 
 class KeycloakAdminSingleton:
@@ -18,13 +19,15 @@ class KeycloakAdminSingleton:
     _initialized = False
     _admin = None
     _params = {}
+    _lock = threading.Lock()
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-            cls._instance._admin = None
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+                cls._instance._admin = None
+            return cls._instance
 
     @property
     def initialized(self):
@@ -35,7 +38,6 @@ class KeycloakAdminSingleton:
             if key not in self._params or self._params[key] != value:
                 break
         else:
-            # If all provided params match, skip re-initialization
             logger.info("KeycloakAdmin already initialized with matching parameters.")
             return False
         return True
@@ -49,32 +51,34 @@ class KeycloakAdminSingleton:
         user_realm_name=settings.KC_UTILS_KC_ADMIN_REALM,
         client_id=settings.KC_UTILS_KC_ADMIN_ID,
     ):
-        current_params = {
-            "server_url": server_url,
-            "username": username,
-            "password": password,
-            "realm_name": realm_name,
-            "user_realm_name": user_realm_name,
-            "client_id": client_id,
-        }
+        with self._lock:
+            current_params = {
+                "server_url": server_url,
+                "username": username,
+                "password": password,
+                "realm_name": realm_name,
+                "user_realm_name": user_realm_name,
+                "client_id": client_id,
+            }
 
-        if not server_url:
-            logger.warning(
-                "KC_UTILS_KC_SERVER_URL is not set. "
-                "Set it in Django settings"
+            if not server_url:
+                logger.warning(
+                    "KC_UTILS_KC_SERVER_URL is not set. "
+                    "Set it in Django settings"
+                )
+
+            if not self.validate_params_override(current_params):
+                return
+
+            self._admin = KeycloakAdmin(**current_params)
+            self._params = current_params
+
+            logger.info(
+                "KeycloakAdmin initialized with server_url=%s, realm_name=%s",
+                server_url,
+                realm_name,
             )
-
-        if not self.validate_params_override(current_params):
-            return
-
-        self._admin = KeycloakAdmin(**current_params)
-
-        logger.info(
-            "KeycloakAdmin initialized with server_url=%s, realm_name=%s",
-            server_url,
-            realm_name,
-        )
-        self._initialized = True
+            self._initialized = True
 
     def __getattr__(self, item):
         # Let dunder lookups fail normally so standard Python protocols
