@@ -23,6 +23,7 @@ def schema_based(func, schema, is_custom_schema):
     def wrapper(*args, **kwargs):
         if not is_custom_schema:
             from django_tenants.utils import get_tenant_model
+
             TenantModel = get_tenant_model()
             if (
                 not TenantModel.objects.filter(schema_name=schema).exists()
@@ -79,12 +80,6 @@ class EventStrategy(ABC):
             )
             return
 
-        if not (event_info := self._get_event_info(event_data["data"], event_type)):
-            logger.warning(
-                "event info could not be extracted, key must be in (User, Permission, Role).",
-            )
-            return
-
         operation_strategy = self._get_operation_strategy(operation_type)
         if operation_strategy is None:
             logger.warning(
@@ -92,12 +87,20 @@ class EventStrategy(ABC):
             )
             return
 
-        # If tenant_schema is provided, wrap the operation strategy with schema_based
+        def _extract_and_execute():
+            if not (event_info := self._get_event_info(event_data["data"], event_type)):
+                logger.warning(
+                    "event info could not be extracted, key must be in (User, Permission, Role).",
+                )
+                return
+            operation_strategy(*event_info)
+
+        # If tenant_schema is provided, wrap with schema_based so realm is set before _get_event_info
         if tenant_schema is not None:
             logger.info(f"Processing event in tenant schema: {tenant_schema}")
-            schema_based(lambda: operation_strategy(*event_info), tenant_schema, is_custom_schema)()
+            schema_based(_extract_and_execute, tenant_schema, is_custom_schema)()
         else:
-            operation_strategy(*event_info)
+            _extract_and_execute()
 
     def _validate_event(self, event_data: Dict) -> bool:
         """
@@ -274,7 +277,7 @@ class EventStrategy(ABC):
         user = event_data["operation_information"]
         roles = (
             user["roles"].get(self.ms_name, [])
-            if isinstance(user["roles"], dict)
+            if isinstance(user.get("roles", []), dict)
             else []
         )
         roles_names = [role["name"] for role in roles]
@@ -485,11 +488,22 @@ class UserEventStrategy(EventStrategy):
         user.save()
         logger.info(f"user {kc_user['username']} updated")
 
-    def _handle_delete(self, *args, **kwargs):
+    def _handle_delete(self, kc_user, *args, **kwargs):
         """
-        Placeholder method for handling the deletion of a user.
+        Handles the deletion of a user by username.
+
+        Args:
+            kc_user (Dict): User details from Keycloak.
         """
-        pass
+        username = kc_user["username"]
+        try:
+            user = self.user_model.objects.get(username=username)
+            user.delete()
+            logger.info(f"User '{username}' deleted successfully.")
+        except self.user_model.DoesNotExist:
+            logger.warning(f"User '{username}' not found, nothing to delete.")
+        except Exception as e:
+            logger.error(f"Error deleting user '{username}': {e}")
 
 
 class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
