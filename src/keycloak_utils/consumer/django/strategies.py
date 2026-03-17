@@ -11,7 +11,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
-from ...sync.django.mixins import ProtocolMapperMixin
 from ...sync.kc_admin import kc_admin
 
 logger = logging.getLogger("keycloak_event_consumer")
@@ -334,7 +333,7 @@ class EventStrategy(ABC):
         return User
 
 
-class RoleEventStrategy(ProtocolMapperMixin, EventStrategy):
+class RoleEventStrategy(EventStrategy):
     """
     Strategy to handle events related to roles, such as create and delete operations.
     """
@@ -391,15 +390,6 @@ class RoleEventStrategy(ProtocolMapperMixin, EventStrategy):
         except Exception as e:
             logger.error("Error deleting group '%s': %s", group_name, e)
             return  # Do not sync mapper when the deletion itself failed.
-
-        try:
-            self.sync_protocol_mapper(self.ms_name)
-        except Exception as e:
-            logger.error(
-                "Error syncing protocol mapper after deleting group '%s': %s",
-                group_name,
-                e,
-            )
 
 
 class UserEventStrategy(EventStrategy):
@@ -506,7 +496,7 @@ class UserEventStrategy(EventStrategy):
             logger.error(f"Error deleting user '{username}': {e}")
 
 
-class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
+class PermissionEventStrategy(EventStrategy):
     """
     Strategy for handling permission-related events such as creation, update, and assignment to groups.
     """
@@ -701,18 +691,45 @@ class PermissionEventStrategy(ProtocolMapperMixin, EventStrategy):
         else:
             logger.info("No groups need this permission added.")
 
-        try:
-            self.sync_protocol_mapper(self.ms_name)
-        except Exception as e:
-            logger.error(
-                "Error syncing protocol mapper after updating permissions: %s", e
-            )
+    def _handle_delete(
+        self,
+        permission_app: str,
+        permission_codename: str,
+        permission_model: str,
+        groups_names: List[str],
+        **kwargs,
+    ):
+        """
+        Handles the deletion of a permission by removing it from all
+        groups and users, then deleting it.
 
-    def _handle_delete(self, *args, **kwargs):
+        Args:
+            permission_app (str): The app where the permission belongs.
+            permission_codename (str): The codename of the permission.
+            permission_model (str): The model associated with the permission.
+            groups_names (List[str]): The list of group names (unused, cleanup is exhaustive).
         """
-        Placeholder method for handling the deletion of a permission.
-        """
-        pass
+        try:
+            permission = self.permission_model.objects.get(
+                codename=permission_codename,
+                content_type__app_label=permission_app,
+            )
+        except self.permission_model.DoesNotExist:
+            logger.warning(
+                "Permission '%s.%s' not found, nothing to delete.",
+                permission_app,
+                permission_codename,
+            )
+            return
+
+        permission.group_set.clear()
+        permission.user_set.clear()
+        permission.delete()
+        logger.info(
+            "Permission '%s.%s' removed from all groups/users and deleted.",
+            permission_app,
+            permission_codename,
+        )
 
 
 class BaseEventStrategyFactory:
