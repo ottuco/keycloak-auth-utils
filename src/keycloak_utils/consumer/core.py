@@ -309,7 +309,11 @@ class EventConsumer(EventHandler):
         if processed:
             channel.basic_ack(delivery_tag=method.delivery_tag)
         else:
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            logger.warning(
+                "Message could not be processed, sending to DLX: %s",
+                event_data,
+            )
+            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     def dlx_handle_message(
         self,
