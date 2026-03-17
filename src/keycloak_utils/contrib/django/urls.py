@@ -14,12 +14,14 @@ from django.urls import path
 
 from . import conf
 from .views import (
+    AllPermissionsView,
     AuthenticateView,
     CallbackView,
     DjangoAdminLoginView,
     DjangoAdminLogoutView,
     ErrorView,
     LogoutView,
+    RolePermissionsView,
 )
 
 urlpatterns = [
@@ -49,4 +51,6 @@ urlpatterns = [
         name=conf.KC_UTILS_OIDC_CALLBACK_URL_NAME,
     ),
     path(f"oidc/logout", LogoutView.as_view(), name=conf.KC_UTILS_OIDC_LOGOUT_URL_NAME),
+    path("permissions/", AllPermissionsView.as_view(), name="all_permissions"),
+    path("permissions/role/", RolePermissionsView.as_view(), name="role_permissions"),
 ]
