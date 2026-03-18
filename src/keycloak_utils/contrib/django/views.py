@@ -4,6 +4,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 
 from django.contrib import auth
+from django.contrib.auth.models import Permission
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -15,9 +16,13 @@ from django.utils.crypto import get_random_string
 from django.utils.html import escape
 from django.utils.http import urlencode
 from django.views.generic import RedirectView, View
+from rest_framework.exceptions import ValidationError
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 from ...errors import AuthenticationError
 from . import conf
+from .serializers import PermissionSerializer
 
 log = logging.getLogger(__name__)
 
@@ -301,4 +306,59 @@ class ErrorView(View):
         escaped_message = escape(error_message)
         return HttpResponse(
             f"<html><body><h1>Error</h1><p>{escaped_message}</p></body></html>",
+        )
+
+
+class AllPermissionsView(ListAPIView):
+    """
+    Returns all available permissions in the service.
+    """
+
+    permission_classes = [IsAdminUser]
+    serializer_class = PermissionSerializer
+    pagination_class = conf.KC_UTILS_PERMISSIONS_PAGINATION_CLASS
+    queryset = Permission.objects.none()
+
+    def get_queryset(self):
+        return Permission.objects.select_related("content_type").order_by(
+            "content_type__app_label",
+            "codename",
+        )
+
+
+class RolePermissionsView(ListAPIView):
+    """
+    Returns permissions for the user's role (Django Group),
+    resolved from Active-User-Role header or ?role= query parameter.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = PermissionSerializer
+    pagination_class = conf.KC_UTILS_PERMISSIONS_PAGINATION_CLASS
+    queryset = Permission.objects.none()
+
+    def get_queryset(self):
+        role = self.request.headers.get(
+            "Active-User-Role"
+        ) or self.request.query_params.get("role")
+        if not role:
+            raise ValidationError(
+                {
+                    "role": "Role is required via Active-User-Role header or ?role= query parameter."
+                },
+            )
+        if not self.request.user.groups.filter(name=role).exists():
+            raise ValidationError(
+                {"role": f"User does not have the '{role}' role."},
+            )
+        return (
+            Permission.objects.filter(
+                group__name=role,
+                group__user=self.request.user,
+            )
+            .select_related("content_type")
+            .order_by(
+                "content_type__app_label",
+                "codename",
+            )
         )

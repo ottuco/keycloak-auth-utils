@@ -243,6 +243,59 @@ Start app server and navigate to login url, It will redirect to SSO login page.
 http://localhost:8000/admin/
 ```
 
+### 3. Permissions Endpoints
+
+The library provides two built-in DRF endpoints for querying permissions.
+
+#### All Permissions (admin only)
+
+Returns all permissions available in the service. Requires `is_staff=True`.
+
+```
+GET /permissions/
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+["app.add_model", "app.change_model", "app.delete_model", "app.view_model"]
+```
+
+#### Role Permissions (authenticated users)
+
+Returns permissions for a specific role the authenticated user belongs to. The role is resolved from the `Active-User-Role` request header first, then falls back to the `?role=` query parameter. Returns `400` if no role is provided.
+
+```
+GET /permissions/role/
+Active-User-Role: editor
+Authorization: Bearer <token>
+```
+
+or via query parameter:
+
+```
+GET /permissions/role/?role=editor
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+["app.add_model", "app.change_model", "app.view_model"]
+```
+
+#### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `KC_UTILS_PERMISSIONS_PAGINATION_CLASS` | `None` | Pagination class for permissions endpoints. Set to a DRF pagination class to enable pagination. |
+
+Example:
+```python
+# settings.py
+from rest_framework.pagination import PageNumberPagination
+
+KC_UTILS_PERMISSIONS_PAGINATION_CLASS = PageNumberPagination
+```
 
 ## Test
 

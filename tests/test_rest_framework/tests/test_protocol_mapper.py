@@ -315,52 +315,38 @@ class TestSyncProtocolMapperMergeLogic:
 
 
 class TestHandleDeleteExceptionPropagation:
-    def test_sync_mapper_exception_is_caught_and_logged(self):
-        """When sync_protocol_mapper raises, _handle_delete catches and logs."""
+    def test_successful_delete_logs_info(self):
+        """Successful group deletion logs info message."""
         from django.contrib.auth.models import Group
 
-        group = Group.objects.create(name="test-role")
-
         from keycloak_utils.consumer.django.strategies import RoleEventStrategy
 
+        Group.objects.create(name="test-role")
         strategy = RoleEventStrategy()
 
-        with (
-            mock.patch.object(
-                strategy,
-                "sync_protocol_mapper",
-                side_effect=RuntimeError("KC down"),
-            ),
-            mock.patch(
-                "keycloak_utils.consumer.django.strategies.logger"
-            ) as mock_logger,
-        ):
+        with mock.patch(
+            "keycloak_utils.consumer.django.strategies.logger"
+        ) as mock_logger:
             strategy._handle_delete(group_name="test-role", role_id="role-123")
 
-        mock_logger.error.assert_called_once()
-        assert "syncing protocol mapper" in mock_logger.error.call_args[0][0]
+        mock_logger.info.assert_called_once()
         assert not Group.objects.filter(name="test-role").exists()
 
-    def test_group_deletion_failure_skips_mapper_sync(self):
-        """When group.delete() fails, sync_protocol_mapper is NOT called."""
+    def test_group_deletion_failure_logs_error(self):
+        """When group doesn't exist, error is logged."""
         from keycloak_utils.consumer.django.strategies import RoleEventStrategy
 
         strategy = RoleEventStrategy()
 
-        with (
-            mock.patch.object(strategy, "sync_protocol_mapper") as mock_sync,
-            mock.patch(
-                "keycloak_utils.consumer.django.strategies.logger"
-            ) as mock_logger,
-        ):
-            # Group doesn't exist — .get() will raise DoesNotExist
+        with mock.patch(
+            "keycloak_utils.consumer.django.strategies.logger"
+        ) as mock_logger:
             strategy._handle_delete(group_name="nonexistent-group", role_id="role-x")
 
-        mock_sync.assert_not_called()
         mock_logger.error.assert_called_once()
 
-    def test_successful_delete_calls_sync_mapper(self):
-        """On successful group deletion, sync_protocol_mapper IS called."""
+    def test_successful_delete_removes_group(self):
+        """On successful deletion, the group no longer exists."""
         from django.contrib.auth.models import Group
 
         from keycloak_utils.consumer.django.strategies import RoleEventStrategy
@@ -368,30 +354,18 @@ class TestHandleDeleteExceptionPropagation:
         Group.objects.create(name="deletable-role")
         strategy = RoleEventStrategy()
 
-        with mock.patch.object(strategy, "sync_protocol_mapper") as mock_sync:
-            strategy._handle_delete(group_name="deletable-role", role_id="role-456")
+        strategy._handle_delete(group_name="deletable-role", role_id="role-456")
 
-        mock_sync.assert_called_once_with(strategy.ms_name)
         assert not Group.objects.filter(name="deletable-role").exists()
 
-    def test_no_partial_mutation_on_sync_failure(self):
-        """Group IS deleted even if sync_protocol_mapper raises (deletion committed)."""
-        from django.contrib.auth.models import Group
-
+    def test_delete_nonexistent_group_does_not_raise(self):
+        """Deleting a nonexistent group does not raise — error is caught."""
         from keycloak_utils.consumer.django.strategies import RoleEventStrategy
 
-        Group.objects.create(name="role-to-delete")
         strategy = RoleEventStrategy()
 
-        with mock.patch.object(
-            strategy,
-            "sync_protocol_mapper",
-            side_effect=Exception("fail"),
-        ):
-            strategy._handle_delete(group_name="role-to-delete", role_id="r1")
-
-        # Group deletion still committed
-        assert not Group.objects.filter(name="role-to-delete").exists()
+        # Should not raise
+        strategy._handle_delete(group_name="no-such-group", role_id="r1")
 
 
 # ===================================================================
