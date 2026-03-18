@@ -695,8 +695,7 @@ class PermissionEventStrategy(EventStrategy):
         self,
         permission_app: str,
         permission_codename: str,
-        permission_model: str,
-        groups_names: List[str],
+        *args,
         **kwargs,
     ):
         """
@@ -706,8 +705,6 @@ class PermissionEventStrategy(EventStrategy):
         Args:
             permission_app (str): The app where the permission belongs.
             permission_codename (str): The codename of the permission.
-            permission_model (str): The model associated with the permission.
-            groups_names (List[str]): The list of group names (unused, cleanup is exhaustive).
         """
         try:
             permission = self.permission_model.objects.get(

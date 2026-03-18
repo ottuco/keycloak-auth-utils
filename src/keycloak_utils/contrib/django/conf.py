@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from django.conf import settings
 
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")
@@ -125,6 +127,6 @@ KC_UTILS_PREDEFINED_ROLES_PROVIDER: str = getattr(
     settings, "KC_UTILS_PREDEFINED_ROLES_PROVIDER", ""
 )
 
-KC_UTILS_PERMISSIONS_PAGINATION_CLASS: type | None = getattr(
+KC_UTILS_PERMISSIONS_PAGINATION_CLASS: Optional[type] = getattr(
     settings, "KC_UTILS_PERMISSIONS_PAGINATION_CLASS", None,
 )

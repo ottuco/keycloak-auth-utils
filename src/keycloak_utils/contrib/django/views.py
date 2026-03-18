@@ -338,7 +338,6 @@ class RolePermissionsView(ListAPIView):
     queryset = Permission.objects.none()
 
     def get_queryset(self):
-        print("the user is", self.request.user)
         role = self.request.headers.get(
             "Active-User-Role"
         ) or self.request.query_params.get("role")
