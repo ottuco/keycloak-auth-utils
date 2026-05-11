@@ -938,13 +938,13 @@ class KeycloakRolePermsMapper(ProtocolMapperMixin):
 
 @dataclass
 class KeycloakPredefinedRole(KeycloakRole):
-    _predefined_cache: list[Any] = field(default_factory=list, init=False, repr=False)
+    _predefined_cache: Optional[list[Any]] = field(default=None, init=False, repr=False)
 
     def _get_permissions(self, group) -> list[Permission]:
         return group.permissions
 
     def _load_predefined(self) -> list[Any]:
-        if not self._predefined_cache:
+        if self._predefined_cache is None:
             self._predefined_cache = list(get_predefined_roles_provider()())
         return self._predefined_cache
 
