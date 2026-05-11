@@ -938,35 +938,37 @@ class KeycloakRolePermsMapper(ProtocolMapperMixin):
 
 @dataclass
 class KeycloakPredefinedRole(KeycloakRole):
-    _predefined_cache: list = field(default_factory=list, init=False, repr=False)
+    _predefined_cache: list[Any] = field(default_factory=list, init=False, repr=False)
 
     def _get_permissions(self, group) -> list[Permission]:
         return group.permissions
 
-    def _load_predefined(self) -> list:
+    def _load_predefined(self) -> list[Any]:
         if not self._predefined_cache:
             self._predefined_cache = list(get_predefined_roles_provider()())
         return self._predefined_cache
 
     def _seed_django_groups(self) -> None:
         """
-        Seed Django Group rows + M2M permissions from the predefined provider.
-        Runs before pushing roles to Keycloak so DB state mirrors KC.
+        Ensure Django Group rows + M2M permissions match the predefined provider
+        before the Keycloak push. The predefined provider is the source of truth:
+        permissions are replaced (not merged), so any manual additions on these
+        groups will be overwritten on each run.
         """
         for role in self._load_predefined():
             group, created = Group.objects.get_or_create(name=role.name)
-            group.permissions.set(role.permissions)
+            perms = list(role.permissions)
+            group.permissions.set(perms)
             logger.info(
                 "Predefined Django group %s '%s' with %d permissions",
                 "created" if created else "updated",
                 role.name,
-                len(role.permissions),
+                len(perms),
             )
 
     def _create_generator(self) -> Generator[Group, None, None]:
         """
-        Internal method to create a generator that fetches all Group objects from Django.
-        Yields: Group objects.
+        Yield predefined role objects from the configured provider (cached).
         """
         yield from self._load_predefined()
 
