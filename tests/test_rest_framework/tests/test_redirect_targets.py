@@ -6,6 +6,8 @@ is relative or on an allowed host, and a rejected request must leave the session
 alone: a failed attempt is not a logout.
 """
 
+import logging
+
 import pytest
 from django.contrib.auth import SESSION_KEY, get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -23,6 +25,8 @@ OFF_HOST_TARGETS = [
     pytest.param("https://evil.com", id="absolute"),
     pytest.param("//evil.com", id="protocol-relative"),
     pytest.param("/\\evil.com", id="backslash"),
+    pytest.param("///evil.com", id="triple-slash"),
+    pytest.param("https://testserver@evil.com", id="own-host-as-userinfo"),
     pytest.param("javascript:alert(1)", id="javascript-scheme"),
 ]
 
@@ -39,7 +43,10 @@ def _request(path, params=None, *, session=None, user=None, secure=False):
 def _assert_rejected(response, field_name):
     assert response.status_code == 400
     assert not response.has_header("Location")
-    assert f"{field_name} parameter" in response.content.decode()
+    assert (
+        response.content.decode()
+        == f"{field_name} parameter is not an allowed redirect target"
+    )
 
 
 class TestLogoutView:
@@ -224,6 +231,50 @@ class TestCallbackView:
 
         _assert_rejected(response, "error")
 
+    def test_auth_leg_sends_the_user_to_a_relative_next(self, monkeypatch):
+        user = get_user_model().objects.create_user(username="kc-user")
+        monkeypatch.setattr(views.auth, "authenticate", lambda *a, **kw: user)
+        request = _request(
+            "/oidc/callback",
+            {"code": "auth-code", "session_state": "kc-session"},
+            session={
+                "session_next_url": "/dashboard",
+                "session_fail_url": "/error",
+                "session_challenge": "verifier",
+            },
+        )
+
+        response = views.CallbackView.as_view()(request)
+
+        assert response.status_code == 302
+        assert response["Location"] == "/dashboard"
+        assert request.session[SESSION_KEY] == str(user.pk)
+
+    def test_error_leg_sends_the_user_to_a_relative_error_target(self):
+        request = _request(
+            "/oidc/callback",
+            {"error": "access_denied"},
+            session={"session_next_url": "/dashboard", "session_fail_url": "/error"},
+        )
+
+        response = views.CallbackView.as_view()(request)
+
+        assert response.status_code == 302
+        assert response["Location"] == "/error?error=access_denied"
+
+
+def test_rejected_target_is_logged(caplog):
+    request = _request("/oidc/login", {"next": "//evil.com", "error": "/error"})
+
+    with caplog.at_level(logging.WARNING, logger=views.__name__):
+        views.AuthenticateView.as_view()(request)
+
+    # Without a log line, a refused link shows up only as a bare 400 in the proxy.
+    assert any(
+        r.levelno == logging.WARNING and "next" in r.getMessage()
+        for r in caplog.records
+    )
+
 
 class TestLogoutThenCallback:
     def test_target_planted_through_logout_is_not_cashed_out_on_callback(self):
@@ -241,6 +292,7 @@ class TestLogoutThenCallback:
         callback_response = views.CallbackView.as_view()(callback)
 
         _assert_rejected(logout_response, "next")
+        assert callback_response.status_code == 400
         assert "evil.com" not in callback_response.get("Location", "")
 
     def test_relative_target_survives_logout_and_callback(self):
@@ -269,7 +321,6 @@ class TestAllowedHosts:
             conf,
             "KC_UTILS_ALLOWED_REDIRECT_HOSTS",
             ["app.example.com"],
-            raising=False,
         )
 
         listed = views.AuthenticateView.as_view()(

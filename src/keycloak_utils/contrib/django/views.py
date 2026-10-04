@@ -53,6 +53,7 @@ def _reject_disallowed_targets(
         (conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME, failure_url),
     ):
         if not is_allowed_redirect(request, url):
+            log.warning("Refused %s redirect target %r", field_name, url[:200])
             return HttpResponseBadRequest(
                 f"{field_name} parameter is not an allowed redirect target",
             )
