@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from django.conf import settings
 
 KC_UTILS_KC_HOST: str = getattr(settings, "KC_UTILS_KC_HOST", "")
@@ -96,7 +94,9 @@ KC_UTILS_USER_SUPERADMIN_ROLE: str = getattr(
 )
 
 KC_UTILS_KC_SERVER_URL: str = getattr(
-    settings, "KC_UTILS_KC_SERVER_URL", ""
+    settings,
+    "KC_UTILS_KC_SERVER_URL",
+    "",
 )
 
 KC_UTILS_KC_ADMIN_USER: str = getattr(settings, "KC_UTILS_KC_ADMIN_USER", "")
@@ -108,7 +108,9 @@ KC_UTILS_KC_ADMIN_ID: str = getattr(settings, "KC_UTILS_KC_ADMIN_ID", "admin-cli
 KC_UTILS_KC_CLIENT_ID: str = getattr(settings, "KC_UTILS_KC_CLIENT_ID", "core")
 KC_UTILS_KC_CLIENT_SECRET: str = getattr(settings, "KC_UTILS_KC_CLIENT_SECRET", "")
 KC_UTILS_KC_FRONTEND_CLIENT_ID: str = getattr(
-    settings, "KC_UTILS_KC_FRONTEND_CLIENT_ID", "frontend"
+    settings,
+    "KC_UTILS_KC_FRONTEND_CLIENT_ID",
+    "frontend",
 )
 
 KC_UTILS_CREATE_QUEUES: dict = getattr(settings, "KC_UTILS_CREATE_QUEUES", {})
@@ -124,9 +126,13 @@ KC_UTILS_MESSAGE_MAX_RETRIES: int = getattr(
 KC_UTILS_TENANT_SCHEMA: str = getattr(settings, "KC_UTILS_TENANT_SCHEMA", "public")
 
 KC_UTILS_PREDEFINED_ROLES_PROVIDER: str = getattr(
-    settings, "KC_UTILS_PREDEFINED_ROLES_PROVIDER", ""
+    settings,
+    "KC_UTILS_PREDEFINED_ROLES_PROVIDER",
+    "",
 )
 
-KC_UTILS_PERMISSIONS_PAGINATION_CLASS: Optional[type] = getattr(
-    settings, "KC_UTILS_PERMISSIONS_PAGINATION_CLASS", None,
+KC_UTILS_PERMISSIONS_PAGINATION_CLASS: type | None = getattr(
+    settings,
+    "KC_UTILS_PERMISSIONS_PAGINATION_CLASS",
+    None,
 )

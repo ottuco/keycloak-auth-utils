@@ -339,12 +339,12 @@ class RolePermissionsView(ListAPIView):
 
     def get_queryset(self):
         role = self.request.headers.get(
-            "Active-User-Role"
+            "Active-User-Role",
         ) or self.request.query_params.get("role")
         if not role:
             raise ValidationError(
                 {
-                    "role": "Role is required via Active-User-Role header or ?role= query parameter."
+                    "role": "Role is required via Active-User-Role header or ?role= query parameter.",
                 },
             )
         if not self.request.user.groups.filter(name=role).exists():
