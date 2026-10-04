@@ -52,6 +52,13 @@ KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME: str = getattr(
     "KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME",
     "error",
 )
+# Hosts, besides the request's own host, that the redirect fields above may point
+# at, e.g. a frontend served from another domain than the API.
+KC_UTILS_ALLOWED_REDIRECT_HOSTS: list[str] = getattr(
+    settings,
+    "KC_UTILS_ALLOWED_REDIRECT_HOSTS",
+    [],
+)
 
 # OIDC Client id and Secret
 KC_UTILS_OIDC_RP_CLIENT_ID: str = getattr(settings, "KC_UTILS_OIDC_RP_CLIENT_ID", "")

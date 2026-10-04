@@ -14,7 +14,7 @@ from django.http import (
 from django.urls import reverse
 from django.utils.crypto import get_random_string
 from django.utils.html import escape
-from django.utils.http import urlencode
+from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.views.generic import RedirectView, View
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView
@@ -25,6 +25,38 @@ from . import conf
 from .serializers import PermissionSerializer
 
 log = logging.getLogger(__name__)
+
+
+def is_allowed_redirect(request: HttpRequest, url: str) -> bool:
+    """
+    True if `url` is safe to redirect to: a relative path, or an absolute URL on the
+    request's own host or on a host in `KC_UTILS_ALLOWED_REDIRECT_HOSTS`.
+    """
+    return url_has_allowed_host_and_scheme(
+        url,
+        allowed_hosts={request.get_host(), *conf.KC_UTILS_ALLOWED_REDIRECT_HOSTS},
+        require_https=request.is_secure(),
+    )
+
+
+def _reject_disallowed_targets(
+    request: HttpRequest,
+    next_url: str,
+    failure_url: str,
+) -> typing.Optional[HttpResponse]:
+    """
+    A 400 naming the first redirect target that `is_allowed_redirect` refuses, or
+    None when both are allowed. Callers check before touching the session.
+    """
+    for field_name, url in (
+        (conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME, next_url),
+        (conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME, failure_url),
+    ):
+        if not is_allowed_redirect(request, url):
+            return HttpResponseBadRequest(
+                f"{field_name} parameter is not an allowed redirect target",
+            )
+    return None
 
 
 class AuthenticateView(View):
@@ -51,6 +83,9 @@ class AuthenticateView(View):
             raise AuthenticationError(
                 f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required",
             )
+        rejected = _reject_disallowed_targets(request, next_url, failure_url)
+        if rejected:
+            return rejected
 
         request.session["session_next_url"] = next_url
         request.session["session_fail_url"] = failure_url
@@ -101,6 +136,11 @@ class CallbackView(View):
             return HttpResponseBadRequest(
                 f"{conf.KC_UTILS_OIDC_REDIRECT_OK_FIELD_NAME} and {conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} session parameters should be filled",
             )
+        # Checked again here, not only where they were stored: a session written
+        # before that check existed may still hold an off-host target.
+        rejected = _reject_disallowed_targets(request, next_url, failure_url)
+        if rejected:
+            return rejected
 
         if "error" in request.GET:
             log.error(request.GET["error"])
@@ -191,6 +231,9 @@ class LogoutView(View):
             return HttpResponseBadRequest(
                 f"{conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME} parameter is required",
             )
+        rejected = _reject_disallowed_targets(request, next_url, failure_url)
+        if rejected:
+            return rejected
 
         if "session_id_token" not in request.session:
             return HttpResponseRedirect(
