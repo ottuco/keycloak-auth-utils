@@ -243,6 +243,31 @@ Start app server and navigate to login url, It will redirect to SSO login page.
 http://localhost:8000/admin/
 ```
 
+#### Redirect targets
+
+`oidc/login`, `oidc/logout` and `oidc/callback` redirect to the `next` and `error`
+targets the caller passes in. A target must be a relative path or an absolute URL
+on the request's own host. Anything else (another host, `//evil.com`, `javascript:`,
+or `http://` on an `https` site) gets `400 Bad Request` naming the parameter, and
+the session is left as it was.
+
+If your frontend is served from another host than the API, allow that host:
+
+```python
+KC_UTILS_ALLOWED_REDIRECT_HOSTS = ["app.example.com", "localhost:3000"]
+```
+
+Each entry is compared exactly with the URL's `host[:port]`: give the port when the
+URL has one, and give a list, not a single string.
+
+| Setting | Default | Description |
+|---|---|---|
+| `KC_UTILS_ALLOWED_REDIRECT_HOSTS` | `[]` | Hosts, besides the request's own host, that `next` / `error` may point at. |
+
+**Upgrading:** before this check, any target was followed. Absolute URLs on another
+host now get `400` until that host is listed above. Custom schemes such as
+`myapp://` are always refused; no setting allows them.
+
 ### 3. Permissions Endpoints
 
 The library provides two built-in DRF endpoints for querying permissions.

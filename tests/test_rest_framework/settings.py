@@ -13,6 +13,9 @@ MIDDLEWARE = []
 
 ROOT_URLCONF = "test_rest_framework.urls"
 
+# keycloak_utils.contrib.django.urls mounts its admin login/logout views here.
+ADMIN_URL = "admin"
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
