@@ -737,6 +737,39 @@ class TestPredefinedRoleFollowUps:
             [READ]
         )
 
+    def test_adoption_without_the_model_is_refused(self, poll_perms):
+        from django.core.exceptions import ImproperlyConfigured
+
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRoleAdoption
+
+        group = Group.objects.create(name="clerk")
+        group.permissions.add(poll_perms[READ])
+        role = self._role("clerk", [poll_perms[READ]])
+
+        with pytest.raises(ImproperlyConfigured, match="KC_UTILS_SEEDED_ROLE_MODEL"):
+            self._instance(KeycloakPredefinedRoleAdoption, [role])._seed_django_groups()
+
+        assert not SeededRole.objects.exists()
+
+    def test_the_command_refuses_adoption_without_the_model(self):
+        from django.core.management import CommandError, load_command_class
+
+        command = load_command_class("keycloak_utils.contrib.django", "sync_keycloak")
+        parser = command.create_parser("manage.py", "sync_keycloak")
+        options = vars(
+            parser.parse_args(
+                ["-adopt-predefined-groups", "--server-url", "http://keycloak.invalid/"]
+            )
+        )
+
+        with mock.patch(
+            "keycloak_utils.contrib.django.management.commands.sync_keycloak.kc_admin"
+        ) as kc_admin:
+            with pytest.raises(CommandError, match="KC_UTILS_SEEDED_ROLE_MODEL"):
+                command.handle(**options)
+
+        kc_admin.initialize.assert_not_called()
+
     def test_the_command_can_run_the_adoption(self):
         from django.core.management import load_command_class
 

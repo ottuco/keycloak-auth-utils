@@ -68,6 +68,11 @@ def resolve_permissions(codenames: Iterable[str]) -> List[Permission]:
     seeder's transaction, multiplied by every tenant a command walks.
 
     ``select_related`` on the content type because callers label what they are handed.
+
+    Raises ``LookupError`` naming the first entry with no row. A seed that hits it stops
+    there, so a composition is applied whole or not at all, and the templates after it
+    are not attempted: a missing permission means migrations have not run, which is the
+    thing to fix.
     """
     pairs = [tuple(name.split(".", 1)) for name in codenames]
     if not pairs:
@@ -153,7 +158,12 @@ def _seed(
     template_key: str,
     adopt_matching: bool,
 ) -> Tuple[Group, SeedOutcome]:
-    """The writes of :func:`seed_group`; the caller holds the transaction."""
+    """The writes of :func:`seed_group`; the caller holds the transaction.
+
+    Not serialised against a second seed of the same group: of two that race on a new
+    one, the loser fails on the group's or the record's uniqueness and rolls back,
+    leaving the winner's rows whole. Seeding belongs to a deploy step, not a request.
+    """
     group, created = Group.objects.get_or_create(name=name)
     current = [] if created else group_codenames(group)
 
@@ -233,7 +243,9 @@ class ResetGuard:
     ) -> bool:
         """Request one gated addition. Return ``True`` if it is still waiting.
 
-        ``False`` means the project's own flow attached it immediately.
+        ``False`` means the project's own flow attached it immediately -- to this
+        ``group``, since the reset reads the group back to decide whether it reached
+        the template.
         """
         raise NotImplementedError
 
@@ -290,7 +302,11 @@ class RoleSeeder:
         )
 
     def seed_all(self) -> Dict[str, SeedOutcome]:
-        """Apply every template in the active schema, keyed by template key."""
+        """Apply every template in the active schema, keyed by template key.
+
+        Stops at the first template that cannot be resolved (see
+        :func:`resolve_permissions`); the ones already seeded stay seeded.
+        """
         return {
             key: self.seed_template(template)
             for key, template in self.registry.templates.items()

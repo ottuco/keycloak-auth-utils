@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional, cast
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Q, QuerySet
 
 from ...contrib.django import conf as kc_conf
@@ -1010,6 +1011,13 @@ class KeycloakPredefinedRole(KeycloakRole):
         an existing group is never modified: there is no way to know it is unedited.
         """
         model = self._seeded_role_model()
+        if self.adopt_existing and model is None:
+            # Adoption writes a record and nothing else: without the model it would
+            # finish having done nothing, and the caller would believe otherwise.
+            raise ImproperlyConfigured(
+                "Adopting predefined groups needs KC_UTILS_SEEDED_ROLE_MODEL: there is "
+                "nowhere to record them without it."
+            )
         for role in self._load_predefined():
             perms = list(role.permissions)
             outcome = seed_group(

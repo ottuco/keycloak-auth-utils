@@ -380,7 +380,8 @@ refuse removals and route sensitive additions through that flow instead of writi
     `sync_keycloak -adopt-predefined-groups` once (`KeycloakPredefinedRoleAdoption`, or
     `KeycloakPredefinedRole(adopt_existing=True)`). It records a group that still
     matches the provider exactly, so upgrades reach it from then on. Until then such a
-    group is skipped with a warning.
+    group is skipped with a warning. The adoption refuses to run without
+    `KC_UTILS_SEEDED_ROLE_MODEL`.
   * The Keycloak push now carries what each predefined Django group holds, not the
     provider's list, so an edited group and its Keycloak policies stay in step.
 * `KeycloakRole(sync_authorization=False)` and the new `KeycloakRoleName` push role
