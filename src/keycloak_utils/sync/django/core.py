@@ -970,7 +970,16 @@ class KeycloakPredefinedRole(KeycloakRole):
     adopt_existing: bool = False
 
     def _get_permissions(self, group) -> list[Permission]:
-        return group.permissions
+        """What the Django group holds, which is what Keycloak is told.
+
+        The provider's own list is only the same thing while the group is attached.
+        Once it is edited the seed leaves the group alone, and pushing the provider's
+        composition would keep granting in Keycloak what was taken off the role here.
+        """
+        django_group = Group.objects.filter(name=group.name).first()
+        if django_group is None:
+            return list(group.permissions)
+        return list(django_group.permissions.select_related("content_type"))
 
     def _load_predefined(self) -> list[Any]:
         if self._predefined_cache is None:
@@ -1018,6 +1027,14 @@ class KeycloakPredefinedRole(KeycloakRole):
                     "KC_UTILS_SEEDED_ROLE_MODEL for drift-aware upgrades.",
                     role.name,
                 )
+            elif outcome is SeedOutcome.SKIPPED_FOREIGN:
+                logger.warning(
+                    "Predefined Django group '%s' existed before it was recorded and "
+                    "was left untouched; provider updates will not reach it. Run "
+                    "sync_keycloak -adopt-predefined-groups once to record the groups "
+                    "that still match the provider.",
+                    role.name,
+                )
             else:
                 logger.info(
                     "Predefined Django group '%s': %s (%d permissions in the provider)",
@@ -1038,6 +1055,17 @@ class KeycloakPredefinedRole(KeycloakRole):
     def run_routine(self) -> None:
         self._seed_django_groups()
         super().run_routine()
+
+
+@dataclass
+class KeycloakPredefinedRoleAdoption(KeycloakPredefinedRole):
+    """The predefined sync, recording the groups an earlier version created.
+
+    A class and not an argument so the `sync_keycloak` command and a Celery worker
+    can name it, the way they name every other routine.
+    """
+
+    adopt_existing: bool = True
 
 
 @dataclass

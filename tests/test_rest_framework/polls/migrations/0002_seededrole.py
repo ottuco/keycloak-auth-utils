@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
                         verbose_name="ID",
                     ),
                 ),
-                ("template_key", models.CharField(max_length=64)),
+                ("template_key", models.CharField(max_length=150)),
                 ("fingerprint", models.CharField(max_length=64)),
                 ("detached", models.BooleanField(default=False)),
                 ("modified", models.DateTimeField(auto_now=True)),

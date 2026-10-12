@@ -327,7 +327,7 @@ TEMPLATES = TemplateRegistry(
 # myproject/models.py -- the library ships no models and no migrations
 class SeededRole(models.Model):
     group = models.OneToOneField("auth.Group", on_delete=models.CASCADE)
-    template_key = models.CharField(max_length=64)
+    template_key = models.CharField(max_length=150)
     fingerprint = models.CharField(max_length=64)
     detached = models.BooleanField(default=False)
 ```
@@ -357,6 +357,11 @@ def test_every_rule_has_a_manifest_decision():
     assert_complete(MANIFEST, perms)
 ```
 
+`on_created` runs after the seed's own transaction, so it may call an identity provider.
+A role edited into exactly what its template has become is recorded as `upgraded`, not
+detached. `reset_to_template` raises `UnknownTemplateError` for a role whose template is
+no longer in the registry.
+
 `reset_to_template` takes an optional `ResetGuard` so a project with an approval flow can
 refuse removals and route sensitive additions through that flow instead of writing them.
 
@@ -372,9 +377,13 @@ refuse removals and route sensitive additions through that flow instead of writi
     untouched group is upgraded, an edited one is detached and left alone.
   * Without that setting, a group the routine creates is still filled, but an existing
     group is never modified; a warning names it.
-  * Projects whose predefined groups were created by an earlier version should run once
-    with `KeycloakPredefinedRole(adopt_existing=True)`. It records a group that still
-    matches the provider exactly, so upgrades reach it from then on.
+  * Projects whose predefined groups were created by an earlier version should run
+    `sync_keycloak -adopt-predefined-groups` once (`KeycloakPredefinedRoleAdoption`, or
+    `KeycloakPredefinedRole(adopt_existing=True)`). It records a group that still
+    matches the provider exactly, so upgrades reach it from then on. Until then such a
+    group is skipped with a warning.
+  * The Keycloak push now carries what each predefined Django group holds, not the
+    provider's list, so an edited group and its Keycloak policies stay in step.
 * `KeycloakRole(sync_authorization=False)` and the new `KeycloakRoleName` push role
   names only: no authorization scope, permission or policy is written, and the
   role-permissions mapper is left alone. `KeycloakRole`'s default behaviour is unchanged.
@@ -733,6 +742,7 @@ python manage.py sync_keycloak \
 - `-migrate-users`: Migrate users from Django to Keycloak.
 - `-migrate-permissions`: Migrate permissions from Django to Keycloak.
 - `--migrate-predefined-groups`: Migrate predefined roles from Django to Keycloak.
+- `-adopt-predefined-groups`: The same, and records the existing predefined groups that still match the provider. Run once when adopting `KC_UTILS_SEEDED_ROLE_MODEL`.
 - `-migrate-role-perms-mapper`: Sync the role-permissions protocol mapper to the frontend client (can be run standalone).
 - `-delegate-celery`: Delegates the task to a celery worker
 - `--realm-name`: Specify the Keycloak realm to operate on.

@@ -13,11 +13,13 @@ migrations. Any model with these four fields works::
 
     class SeededRole(models.Model):
         group = models.OneToOneField("auth.Group", on_delete=models.CASCADE)
-        template_key = models.CharField(max_length=64)
+        template_key = models.CharField(max_length=150)
         fingerprint = models.CharField(max_length=64)
         detached = models.BooleanField(default=False)
 
-A ``modified`` timestamp field, if the model has one, is kept current.
+``template_key`` is as long as ``auth.Group.name``: a predefined role is recorded
+under its own name. A ``modified`` timestamp field, if the model has one, is kept
+current.
 
 Caller owns the tenant context: every method reads and writes the active schema.
 """
@@ -35,7 +37,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from .seeding import SeedOutcome, at_parity, decide_seed, fingerprint_for
-from .templates import RoleTemplate, TemplateRegistry
+from .templates import RoleTemplate, TemplateRegistry, UnknownTemplateError
 
 
 def permission_label(permission: Permission) -> str:
@@ -119,64 +121,87 @@ def seed_group(
     holds exactly ``wanted``. Off by default, because a matching name and composition
     can be a coincidence; it is the explicit one-off for a project whose groups were
     created by an earlier, record-less seeder.
+
+    ``on_created`` is called after this function's own transaction has closed, so a
+    callback that talks to an identity provider neither holds the write open across
+    the network nor announces a group that was rolled back. A caller that wraps the
+    seed in a wider transaction owns that deferral itself.
     """
     wanted = list(wanted)
     with transaction.atomic():
-        group, created = Group.objects.get_or_create(name=name)
-        current = [] if created else group_codenames(group)
-
-        if model is None:
-            if created:
-                group.permissions.set(resolve())
-                if on_created:
-                    on_created(group)
-                return SeedOutcome.CREATED
-            if at_parity(wanted=wanted, current=current):
-                return SeedOutcome.UNCHANGED
-            return SeedOutcome.SKIPPED_FOREIGN
-
-        record = model.objects.filter(group=group).first()
-        if (
-            record is None
-            and not created
-            and adopt_matching
-            and at_parity(wanted=wanted, current=current)
-        ):
-            model.objects.create(
-                group=group,
-                template_key=template_key or name,
-                fingerprint=fingerprint_for(wanted),
-            )
-            return SeedOutcome.UNCHANGED
-
-        decision = decide_seed(
+        group, outcome = _seed(
+            name=name,
             wanted=wanted,
-            current=current,
-            group_created=created,
-            recorded_fingerprint=record.fingerprint if record else None,
-            detached=bool(record and record.detached),
+            resolve=resolve,
+            model=model,
+            template_key=template_key or name,
+            adopt_matching=adopt_matching,
         )
-        if decision.write_permissions:
-            group.permissions.set(resolve())
-        if decision.create_record:
-            model.objects.create(
-                group=group,
-                template_key=template_key or name,
-                fingerprint=decision.fingerprint,
-            )
-        elif decision.write_permissions:
-            record.fingerprint = decision.fingerprint
-            record.template_key = template_key or name
-            _save(record, "fingerprint", "template_key")
-        elif decision.detach:
-            record.detached = True
-            _save(record, "detached")
+    # Only on CREATED: an upgrade changes a composition, which an identity provider
+    # that carries role names alone has nothing to learn from.
+    if outcome is SeedOutcome.CREATED and on_created:
+        on_created(group)
+    return outcome
 
-        # Only on CREATED: an upgrade changes a composition, which an identity
-        # provider that carries role names alone has nothing to learn from.
-        if decision.outcome is SeedOutcome.CREATED and on_created:
-            on_created(group)
-    return decision.outcome
+
+def _seed(
+    *,
+    name: str,
+    wanted: List[str],
+    resolve: Callable[[], List[Permission]],
+    model: Optional[type],
+    template_key: str,
+    adopt_matching: bool,
+) -> Tuple[Group, SeedOutcome]:
+    """The writes of :func:`seed_group`; the caller holds the transaction."""
+    group, created = Group.objects.get_or_create(name=name)
+    current = [] if created else group_codenames(group)
+
+    if model is None:
+        if created:
+            group.permissions.set(resolve())
+            return group, SeedOutcome.CREATED
+        if at_parity(wanted=wanted, current=current):
+            return group, SeedOutcome.UNCHANGED
+        return group, SeedOutcome.SKIPPED_FOREIGN
+
+    record = model.objects.filter(group=group).first()
+    if (
+        record is None
+        and not created
+        and adopt_matching
+        and at_parity(wanted=wanted, current=current)
+    ):
+        model.objects.create(
+            group=group,
+            template_key=template_key,
+            fingerprint=fingerprint_for(wanted),
+        )
+        return group, SeedOutcome.UNCHANGED
+
+    decision = decide_seed(
+        wanted=wanted,
+        current=current,
+        group_created=created,
+        recorded_fingerprint=record.fingerprint if record else None,
+        detached=bool(record and record.detached),
+    )
+    if decision.write_permissions:
+        group.permissions.set(resolve())
+    if decision.create_record:
+        model.objects.create(
+            group=group,
+            template_key=template_key,
+            fingerprint=decision.fingerprint,
+        )
+    elif decision.fingerprint is not None:
+        record.fingerprint = decision.fingerprint
+        record.template_key = template_key
+        _save(record, "fingerprint", "template_key")
+    elif decision.detach:
+        record.detached = True
+        _save(record, "detached")
+    return group, decision.outcome
 
 
 def _save(record, *fields: str) -> None:
@@ -301,7 +326,9 @@ class RoleSeeder:
 
         Raises the model's ``DoesNotExist`` when the seeder does not own the group:
         resetting a hand-made role has no meaning, and creating a record for one would
-        hand it to the seeder without anyone asking.
+        hand it to the seeder without anyone asking. Raises
+        :class:`~keycloak_utils.rbac.UnknownTemplateError` when the group is recorded
+        under a template this registry does not hold.
 
         Additions the project's guard gates are requested through it instead of being
         written, and the role stays detached while any is outstanding -- re-attaching
@@ -311,7 +338,12 @@ class RoleSeeder:
         """
         with transaction.atomic():
             record = self.model.objects.get(group=group)
-            template = self.registry.templates[record.template_key]
+            template = self.registry.template_for(record.template_key)
+            if template is None:
+                raise UnknownTemplateError(
+                    f"role {group.name!r} is recorded under template "
+                    f"{record.template_key!r}, which this registry does not hold"
+                )
 
             wanted = resolve_permissions(self.registry.permissions_for(template))
             wanted_ids = {permission.id for permission in wanted}

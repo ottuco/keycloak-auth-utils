@@ -14,7 +14,9 @@ on this library being installed has no place in a project's migrations
 One case the design accepts on purpose: a role edited and then edited back to match the
 template exactly is indistinguishable from one never touched, and upgrades resume. The
 fingerprint describes the composition, not its history, and treating an identical role
-as customised would strand it for no reason anyone could observe.
+as customised would strand it for no reason anyone could observe. The same holds for a
+role edited into exactly what the template has since become: it is at parity, so it is
+recorded as upgraded and not detached.
 """
 
 from __future__ import annotations
@@ -56,7 +58,8 @@ def fingerprint_for(codenames: Iterable[str]) -> str:
 class SeedDecision:
     """What to do about one template and one group.
 
-    ``write_permissions`` -- set the group's permissions to the template's.
+    ``write_permissions`` -- set the group's permissions to the template's. False on
+    an upgrade the group already matches: only the record moves.
     ``create_record`` -- this is the first write; start a fingerprint record.
     ``detach`` -- mark the existing record detached and never write again until a reset.
     ``fingerprint`` -- the value to record after a write; ``None`` if nothing is.
@@ -107,7 +110,12 @@ def decide_seed(
     if detached:
         return SeedDecision(SeedOutcome.SKIPPED_DETACHED)
 
-    if fingerprint_for(current) != recorded_fingerprint:
+    current_fingerprint = fingerprint_for(current)
+    if current_fingerprint != recorded_fingerprint:
+        if current_fingerprint == wanted_fingerprint:
+            # Edited into exactly what the template now is. Nothing to write and
+            # nothing of the tenant's to protect: move the record, keep it attached.
+            return SeedDecision(SeedOutcome.UPGRADED, fingerprint=wanted_fingerprint)
         # Edited since the last write. Never write to it again until a reset.
         return SeedDecision(SeedOutcome.DETACHED, detach=True)
 

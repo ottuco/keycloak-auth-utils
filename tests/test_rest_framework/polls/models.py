@@ -18,7 +18,7 @@ class SeededRole(models.Model):
     group = models.OneToOneField(
         "auth.Group", on_delete=models.CASCADE, related_name="seeded"
     )
-    template_key = models.CharField(max_length=64)
+    template_key = models.CharField(max_length=150)
     fingerprint = models.CharField(max_length=64)
     detached = models.BooleanField(default=False)
     modified = models.DateTimeField(auto_now=True)

@@ -51,6 +51,13 @@ class Command(BaseCommand):
             "extra_args": lambda self: [],
             "soft_time_limit": 1000,
         },
+        "adopt_predefined_groups": {
+            "classpath": (
+                "keycloak_utils.sync.django.core.KeycloakPredefinedRoleAdoption"
+            ),
+            "extra_args": lambda self: [],
+            "soft_time_limit": 1000,
+        },
         "migrate_role_perms_mapper": {
             "classpath": "keycloak_utils.sync.django.core.KeycloakRolePermsMapper",
             "extra_args": lambda self: [],
@@ -88,6 +95,16 @@ class Command(BaseCommand):
             "-migrate-predefined-groups",
             action="store_true",
             help="Migrate predefined roles from Django to Keycloak",
+            default=False,
+        )
+        parser.add_argument(
+            "-adopt-predefined-groups",
+            action="store_true",
+            help=(
+                "Migrate predefined roles and record the existing groups that still "
+                "match the provider, so later updates reach them. Run once; needs "
+                "KC_UTILS_SEEDED_ROLE_MODEL."
+            ),
             default=False,
         )
         parser.add_argument(

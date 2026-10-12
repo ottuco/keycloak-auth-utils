@@ -584,3 +584,184 @@ class TestRoleNamePushWritesNoAuthorization:
         ):
             self._sync(KeycloakRole)
         assert (policy.called, attach.called) == (True, True)
+
+    def test_a_missing_role_is_created_by_name_alone(self, poll_perms):
+        from keycloak_utils.contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+        from keycloak_utils.sync.django.core import KeycloakRoleName
+
+        Group.objects.create(name="viewer")
+        realm_roles = []
+
+        def create_role(client_id, payload, skip_exists=True):
+            realm_roles.append({"name": payload["name"], "id": "rid"})
+            return payload["name"]
+
+        kc = mock.MagicMock()
+        kc.get_clients.return_value = [{"clientId": KC_UTILS_KC_CLIENT_ID, "id": "cid"}]
+        kc.get_client_roles.side_effect = lambda *_: list(realm_roles)
+        kc.create_client_role.side_effect = create_role
+        with mock.patch("keycloak_utils.sync.django.core.kc_admin", kc):
+            KeycloakRoleName().run_routine()
+
+        assert [role["name"] for role in realm_roles] == ["viewer"]
+        assert [call[0] for call in kc.mock_calls] == [
+            "get_clients",
+            "get_client_roles",
+            "create_client_role",
+            "get_client_roles",
+        ]
+
+
+@pytest.mark.django_db
+class TestReviewFollowUps:
+    """What the review of #159879 found, each pinned."""
+
+    def test_a_group_edited_into_the_new_template_is_upgraded_not_detached(
+        self, poll_perms
+    ):
+        _seeder(VIEWER).seed_template(VIEWER)
+        group = Group.objects.get(name="viewer")
+        group.permissions.add(poll_perms[WRITE])  # by hand, what V2 then adds
+
+        outcome = _seeder(VIEWER_V2).seed_template(VIEWER_V2)
+
+        record = SeededRole.objects.get(group=group)
+        assert outcome is SeedOutcome.UPGRADED
+        assert (record.detached, record.fingerprint) == (
+            False,
+            fingerprint_for([READ, WRITE]),
+        )
+        assert _codenames(group) == sorted([READ, WRITE])
+
+    def test_the_decision_for_that_group_writes_nothing(self):
+        decision = decide_seed(
+            wanted=[READ, WRITE],
+            current=[READ, WRITE],
+            group_created=False,
+            recorded_fingerprint=fingerprint_for([READ]),
+        )
+        assert (decision.outcome, decision.write_permissions, decision.detach) == (
+            SeedOutcome.UPGRADED,
+            False,
+            False,
+        )
+        assert decision.fingerprint == fingerprint_for([READ, WRITE])
+
+    def test_reset_of_a_role_whose_template_is_gone_says_so(self, poll_perms):
+        from keycloak_utils.rbac import UnknownTemplateError
+
+        _seeder(VIEWER).seed_template(VIEWER)
+        group = Group.objects.get(name="viewer")
+
+        with pytest.raises(UnknownTemplateError, match="'viewer'.*does not hold"):
+            _seeder().reset_to_template(group)
+        assert issubclass(UnknownTemplateError, KeyError)
+
+    def test_on_created_runs_after_the_seed_transaction(self, poll_perms):
+        from django.db import connection
+
+        outside = len(connection.savepoint_ids)
+        seen = []
+        _seeder(
+            VIEWER, on_created=lambda _: seen.append(len(connection.savepoint_ids))
+        ).seed_template(VIEWER)
+
+        assert seen == [outside]
+
+    def test_a_record_holds_a_name_as_long_as_a_group_name(self):
+        assert (
+            SeededRole._meta.get_field("template_key").max_length
+            == Group._meta.get_field("name").max_length
+        )
+
+
+@pytest.mark.django_db
+class TestPredefinedRoleFollowUps:
+    @staticmethod
+    def _role(name, perms):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(name=name, permissions=perms)
+
+    @pytest.fixture
+    def with_model(self):
+        import keycloak_utils.contrib.django.conf as conf
+
+        with mock.patch.object(conf, "KC_UTILS_SEEDED_ROLE_MODEL", "polls.SeededRole"):
+            yield
+
+    def _instance(self, cls, roles):
+        instance = cls.__new__(cls)
+        instance._predefined_cache = list(roles)
+        instance.adopt_existing = cls.adopt_existing
+        return instance
+
+    def test_keycloak_is_told_what_an_edited_group_holds(self, with_model, poll_perms):
+        """The provider still lists a permission the tenant took off the role; the
+        push must not keep granting it."""
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRole
+
+        role = self._role("clerk", [poll_perms[READ], poll_perms[WRITE]])
+        sync = self._instance(KeycloakPredefinedRole, [role])
+        sync._seed_django_groups()
+        group = Group.objects.get(name="clerk")
+        group.permissions.remove(poll_perms[WRITE])
+        sync._seed_django_groups()  # detaches
+
+        pushed = sorted(p.codename for p in sync._get_permissions(role))
+
+        assert SeededRole.objects.get(group=group).detached is True
+        assert pushed == ["view_poll"]
+
+    def test_an_attached_group_is_pushed_as_the_provider_lists_it(
+        self, with_model, poll_perms
+    ):
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRole
+
+        role = self._role("clerk", [poll_perms[READ], poll_perms[WRITE]])
+        sync = self._instance(KeycloakPredefinedRole, [role])
+        sync._seed_django_groups()
+
+        pushed = sorted(p.codename for p in sync._get_permissions(role))
+
+        assert pushed == ["change_poll", "view_poll"]
+
+    def test_an_unrecorded_group_is_warned_about_by_name(
+        self, with_model, poll_perms, caplog
+    ):
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRole
+
+        Group.objects.create(name="clerk").permissions.add(poll_perms[READ])
+        role = self._role("clerk", [poll_perms[READ], poll_perms[WRITE]])
+
+        with caplog.at_level("WARNING", logger="keycloak_utils.sync.django.core"):
+            self._instance(KeycloakPredefinedRole, [role])._seed_django_groups()
+
+        assert [r.levelname for r in caplog.records] == ["WARNING"]
+        assert "'clerk'" in caplog.text and "-adopt-predefined-groups" in caplog.text
+
+    def test_the_adoption_routine_records_a_matching_group(
+        self, with_model, poll_perms
+    ):
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRoleAdoption
+
+        group = Group.objects.create(name="clerk")
+        group.permissions.add(poll_perms[READ])
+        role = self._role("clerk", [poll_perms[READ]])
+
+        self._instance(KeycloakPredefinedRoleAdoption, [role])._seed_django_groups()
+
+        assert SeededRole.objects.get(group=group).fingerprint == fingerprint_for(
+            [READ]
+        )
+
+    def test_the_command_can_run_the_adoption(self):
+        from django.core.management import load_command_class
+
+        command = load_command_class("keycloak_utils.contrib.django", "sync_keycloak")
+        parser = command.create_parser("manage.py", "sync_keycloak")
+
+        assert parser.parse_args(["-adopt-predefined-groups"]).adopt_predefined_groups
+        assert command.sync_routines["adopt_predefined_groups"]["classpath"] == (
+            "keycloak_utils.sync.django.core.KeycloakPredefinedRoleAdoption"
+        )

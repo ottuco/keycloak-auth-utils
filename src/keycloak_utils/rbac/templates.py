@@ -23,6 +23,17 @@ class UnknownTemplateRuleError(Exception):
     """A template names a rule that is not in the manifest."""
 
 
+class UnknownTemplateError(KeyError):
+    """A role is recorded under a template key this registry does not hold.
+
+    The template was retired, or the role was seeded by something other than this
+    registry. A ``KeyError`` because that is what the lookup used to raise.
+    """
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
 @dataclass(frozen=True)
 class RoleTemplate:
     """One standard role, as it appears in a role list.

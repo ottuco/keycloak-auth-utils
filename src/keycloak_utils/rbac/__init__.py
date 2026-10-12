@@ -17,7 +17,12 @@ from .completeness import (
 )
 from .manifest import ADVANCED, CURATED, Manifest, ManifestEntry, advanced_entry
 from .seeding import SeedDecision, SeedOutcome, at_parity, decide_seed, fingerprint_for
-from .templates import RoleTemplate, TemplateRegistry, UnknownTemplateRuleError
+from .templates import (
+    RoleTemplate,
+    TemplateRegistry,
+    UnknownTemplateError,
+    UnknownTemplateRuleError,
+)
 
 __all__ = [
     "ADVANCED",
@@ -30,6 +35,7 @@ __all__ = [
     "SeedDecision",
     "SeedOutcome",
     "TemplateRegistry",
+    "UnknownTemplateError",
     "UnknownTemplateRuleError",
     "advanced_entry",
     "assert_complete",
