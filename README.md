@@ -358,8 +358,7 @@ def test_every_rule_has_a_manifest_decision():
 ```
 
 `on_created` runs after the seed's own transaction, so it may call an identity provider.
-A role edited into exactly what its template has become is recorded as `upgraded`, not
-detached. `reset_to_template` raises `UnknownTemplateError` for a role whose template is
+`reset_to_template` raises `UnknownTemplateError` for a role whose template is
 no longer in the registry.
 
 `reset_to_template` takes an optional `ResetGuard` so a project with an approval flow can

@@ -616,36 +616,18 @@ class TestRoleNamePushWritesNoAuthorization:
 class TestReviewFollowUps:
     """What the review of #159879 found, each pinned."""
 
-    def test_a_group_edited_into_the_new_template_is_upgraded_not_detached(
-        self, poll_perms
-    ):
+    def test_a_group_edited_into_the_new_template_still_detaches(self, poll_perms):
+        """Any edit detaches, even one that lands on what the template then becomes:
+        the seeder never guesses that a hand edit was meant as an upgrade."""
         _seeder(VIEWER).seed_template(VIEWER)
         group = Group.objects.get(name="viewer")
         group.permissions.add(poll_perms[WRITE])  # by hand, what V2 then adds
 
         outcome = _seeder(VIEWER_V2).seed_template(VIEWER_V2)
 
-        record = SeededRole.objects.get(group=group)
-        assert outcome is SeedOutcome.UPGRADED
-        assert (record.detached, record.fingerprint) == (
-            False,
-            fingerprint_for([READ, WRITE]),
-        )
+        assert outcome is SeedOutcome.DETACHED
+        assert SeededRole.objects.get(group=group).detached is True
         assert _codenames(group) == sorted([READ, WRITE])
-
-    def test_the_decision_for_that_group_writes_nothing(self):
-        decision = decide_seed(
-            wanted=[READ, WRITE],
-            current=[READ, WRITE],
-            group_created=False,
-            recorded_fingerprint=fingerprint_for([READ]),
-        )
-        assert (decision.outcome, decision.write_permissions, decision.detach) == (
-            SeedOutcome.UPGRADED,
-            False,
-            False,
-        )
-        assert decision.fingerprint == fingerprint_for([READ, WRITE])
 
     def test_reset_of_a_role_whose_template_is_gone_says_so(self, poll_perms):
         from keycloak_utils.rbac import UnknownTemplateError

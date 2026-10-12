@@ -194,7 +194,7 @@ def _seed(
             template_key=template_key,
             fingerprint=decision.fingerprint,
         )
-    elif decision.fingerprint is not None:
+    elif decision.write_permissions:
         record.fingerprint = decision.fingerprint
         record.template_key = template_key
         _save(record, "fingerprint", "template_key")
