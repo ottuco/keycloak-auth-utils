@@ -25,6 +25,7 @@ jobs:
         pip install tox -U
     # Only this job's interpreter is installed, so run only its environments. tox
     # used to skip the others; since 4.65 a missing interpreter fails the run.
+    # An environment with no pyXY factor in its name is selected by no job.
     - name: Run Tests
       env:
         PYTHON_VERSION: ${{ matrix.python-version }}

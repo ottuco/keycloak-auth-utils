@@ -1018,6 +1018,13 @@ class KeycloakPredefinedRole(KeycloakRole):
                 "Adopting predefined groups needs KC_UTILS_SEEDED_ROLE_MODEL: there is "
                 "nowhere to record them without it."
             )
+        # An adopted group and one recorded earlier both come back unchanged; the
+        # names recorded before this run tell them apart for the log.
+        recorded = (
+            set(model.objects.values_list("group__name", flat=True))
+            if self.adopt_existing
+            else set()
+        )
         for role in self._load_predefined():
             perms = list(role.permissions)
             outcome = seed_group(
@@ -1050,6 +1057,17 @@ class KeycloakPredefinedRole(KeycloakRole):
                     "sync_keycloak -adopt-predefined-groups once to record the groups "
                     "that still match the provider.",
                     role.name,
+                )
+            elif (
+                self.adopt_existing
+                and outcome is SeedOutcome.UNCHANGED
+                and role.name not in recorded
+            ):
+                logger.info(
+                    "Predefined Django group '%s': adopted (%d permissions in the "
+                    "provider)",
+                    role.name,
+                    len(perms),
                 )
             else:
                 logger.info(

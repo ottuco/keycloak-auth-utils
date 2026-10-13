@@ -747,6 +747,24 @@ class TestPredefinedRoleFollowUps:
             [READ]
         )
 
+    def test_the_adoption_log_tells_adopted_from_already_recorded(
+        self, with_model, poll_perms, caplog
+    ):
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRoleAdoption
+
+        Group.objects.create(name="clerk").permissions.add(poll_perms[READ])
+        role = self._role("clerk", [poll_perms[READ]])
+        routine = self._instance(KeycloakPredefinedRoleAdoption, [role])
+
+        with caplog.at_level("INFO", logger="keycloak_utils.sync.django.core"):
+            routine._seed_django_groups()
+            first = caplog.text
+            caplog.clear()
+            routine._seed_django_groups()
+
+        assert "'clerk': adopted" in first
+        assert "'clerk': unchanged" in caplog.text
+
     def test_adoption_does_not_point_a_differing_group_back_at_itself(
         self, with_model, poll_perms, caplog
     ):
