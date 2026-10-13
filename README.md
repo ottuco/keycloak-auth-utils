@@ -363,6 +363,9 @@ no longer in the registry.
 
 `reset_to_template` takes an optional `ResetGuard` so a project with an approval flow can
 refuse removals and route sensitive additions through that flow instead of writing them.
+A role with such an addition outstanding stays detached; nothing in the library watches
+for the approval, so the project calls `seeder.reattach_if_at_parity(group)` once it has
+attached the permission.
 
 ## Release notes
 
@@ -382,6 +385,10 @@ refuse removals and route sensitive additions through that flow instead of writi
     matches the provider exactly, so upgrades reach it from then on. Until then such a
     group is skipped with a warning. The adoption refuses to run without
     `KC_UTILS_SEEDED_ROLE_MODEL`.
+  * This includes an existing group with no permissions at all, such as one a login
+    created for a realm role before the first sync. Earlier versions filled it on the
+    next run; it now stays empty, with the same warning, until it is given its
+    permissions by hand.
   * The Keycloak push now carries what each predefined Django group holds, not the
     provider's list, so an edited group and its Keycloak policies stay in step.
 * `KeycloakRole(sync_authorization=False)` and the new `KeycloakRoleName` push role

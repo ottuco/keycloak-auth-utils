@@ -658,6 +658,16 @@ class TestReviewFollowUps:
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("name", ["view_poll", "polls.", ".view_poll", ""])
+def test_a_malformed_permission_name_is_refused_by_name(name):
+    from keycloak_utils.rbac.django import resolve_permissions
+
+    with pytest.raises(ValueError, match="app_label.codename") as raised:
+        resolve_permissions(["polls.view_poll", name])
+
+    assert repr(name) in str(raised.value)
+
+
 class TestPredefinedRoleFollowUps:
     @staticmethod
     def _role(name, perms):
@@ -736,6 +746,21 @@ class TestPredefinedRoleFollowUps:
         assert SeededRole.objects.get(group=group).fingerprint == fingerprint_for(
             [READ]
         )
+
+    def test_adoption_does_not_point_a_differing_group_back_at_itself(
+        self, with_model, poll_perms, caplog
+    ):
+        from keycloak_utils.sync.django.core import KeycloakPredefinedRoleAdoption
+
+        Group.objects.create(name="clerk").permissions.add(poll_perms[READ])
+        role = self._role("clerk", [poll_perms[READ], poll_perms[WRITE]])
+
+        with caplog.at_level("WARNING", logger="keycloak_utils.sync.django.core"):
+            self._instance(KeycloakPredefinedRoleAdoption, [role])._seed_django_groups()
+
+        assert "'clerk'" in caplog.text and "not adopted" in caplog.text
+        assert "-adopt-predefined-groups" not in caplog.text
+        assert not SeededRole.objects.exists()
 
     def test_adoption_without_the_model_is_refused(self, poll_perms):
         from django.core.exceptions import ImproperlyConfigured

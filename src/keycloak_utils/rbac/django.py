@@ -69,12 +69,20 @@ def resolve_permissions(codenames: Iterable[str]) -> List[Permission]:
 
     ``select_related`` on the content type because callers label what they are handed.
 
-    Raises ``LookupError`` naming the first entry with no row. A seed that hits it stops
+    Raises ``ValueError`` naming an entry that is not ``app_label.codename``, and
+    ``LookupError`` naming the first entry with no row. A seed that hits it stops
     there, so a composition is applied whole or not at all, and the templates after it
     are not attempted: a missing permission means migrations have not run, which is the
     thing to fix.
     """
-    pairs = [tuple(name.split(".", 1)) for name in codenames]
+    pairs = []
+    for name in codenames:
+        app_label, dot, codename = name.partition(".")
+        if not (app_label and dot and codename):
+            raise ValueError(
+                f"manifest permission {name!r} is not of the form app_label.codename"
+            )
+        pairs.append((app_label, codename))
     if not pairs:
         return []
     rows = Permission.objects.select_related("content_type").filter(

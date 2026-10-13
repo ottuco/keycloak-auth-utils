@@ -1035,6 +1035,14 @@ class KeycloakPredefinedRole(KeycloakRole):
                     "KC_UTILS_SEEDED_ROLE_MODEL for drift-aware upgrades.",
                     role.name,
                 )
+            elif outcome is SeedOutcome.SKIPPED_FOREIGN and self.adopt_existing:
+                # This IS the adoption run, so do not send the reader back to it.
+                logger.warning(
+                    "Predefined Django group '%s' does not hold the provider's "
+                    "composition and was not adopted; it is left untouched and "
+                    "provider updates will not reach it.",
+                    role.name,
+                )
             elif outcome is SeedOutcome.SKIPPED_FOREIGN:
                 logger.warning(
                     "Predefined Django group '%s' existed before it was recorded and "
