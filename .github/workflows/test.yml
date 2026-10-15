@@ -3,10 +3,16 @@ name: Tests with tox
 on:
   pull_request:
 
+# A new push to a PR cancels its superseded run.
+concurrency:
+  group: tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       max-parallel: 4
       matrix:
