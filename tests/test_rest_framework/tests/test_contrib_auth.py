@@ -50,6 +50,7 @@ class TestStoredUsername:
                 id="superadmin-matches-exactly",
             ),
             pytest.param([], SARA_CLAIMS, "sara.k", id="unknown-user"),
+            pytest.param([], {}, "", id="no-username"),
         ],
     )
     def test_stored_username(self, stored, claims, expected):
