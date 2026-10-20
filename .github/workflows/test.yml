@@ -2,6 +2,9 @@ name: Tests with tox
 
 on:
   pull_request:
+    # Drafts are skipped (job-level `if` below); ready_for_review runs the checks
+    # when the PR leaves draft.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # A new push to a PR cancels its superseded run.
 concurrency:
@@ -10,6 +13,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
 
     runs-on: ubuntu-latest
     timeout-minutes: 15
