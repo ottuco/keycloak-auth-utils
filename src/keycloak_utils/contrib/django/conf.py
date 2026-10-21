@@ -127,6 +127,12 @@ KC_UTILS_PREDEFINED_ROLES_PROVIDER: str = getattr(
     settings, "KC_UTILS_PREDEFINED_ROLES_PROVIDER", ""
 )
 
+# "app_label.ModelName" of the project's fingerprint model (see
+# keycloak_utils.rbac.django). With it, KeycloakPredefinedRole upgrades a predefined
+# group it wrote and detaches one that was edited; without it, an existing group is
+# left as it is.
+KC_UTILS_SEEDED_ROLE_MODEL: str = getattr(settings, "KC_UTILS_SEEDED_ROLE_MODEL", "")
+
 KC_UTILS_PERMISSIONS_PAGINATION_CLASS: Optional[type] = getattr(
     settings, "KC_UTILS_PERMISSIONS_PAGINATION_CLASS", None,
 )
