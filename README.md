@@ -243,6 +243,14 @@ Start app server and navigate to login url, It will redirect to SSO login page.
 http://localhost:8000/admin/
 ```
 
+The backend signs in the Django user whose `username` is the token's
+`preferred_username`, and creates it if there is none. Keycloak always sends
+usernames lowercased, so a user stored as `Sara.K` is matched ignoring case: the
+exact spelling wins if a user has it, and tokens with the
+`KC_UTILS_USER_SUPERADMIN_ROLE` role only match exactly. To use the same lookup
+in your own authentication class, call
+`keycloak_utils.contrib.django.auth.stored_username(claims)`.
+
 ### 3. Permissions Endpoints
 
 The library provides two built-in DRF endpoints for querying permissions.
