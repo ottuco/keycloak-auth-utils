@@ -823,3 +823,84 @@ class TestPredefinedRoleFollowUps:
         assert command.sync_routines["adopt_predefined_groups"]["classpath"] == (
             "keycloak_utils.sync.django.core.KeycloakPredefinedRoleAdoption"
         )
+
+
+@pytest.mark.django_db
+class TestUpgradeHoldsGatedAdditions:
+    """A template upgrade meets the project's approval flow the way a reset does.
+
+    Found in the core review (#156770): a release that added a gated permission to a
+    standard role reached every untouched tenant with no checker, while a reset of the
+    same role held it.
+    """
+
+    def test_a_gated_addition_waits_and_the_role_detaches(self, poll_perms):
+        _seeder(VIEWER).seed_template(VIEWER)
+        guard = _ApprovalGuard(gated={WRITE})
+
+        outcome = _seeder(VIEWER_V2, reset_guard=guard).seed_template(VIEWER_V2)
+
+        group = Group.objects.get(name="viewer")
+        record = SeededRole.objects.get(group=group)
+        assert outcome is SeedOutcome.UPGRADED_AWAITING_APPROVAL
+        assert guard.requested == [("change_poll", None)]
+        assert _codenames(group) == [READ]
+        assert (record.detached, record.fingerprint) == (True, fingerprint_for([READ]))
+
+    def test_the_next_run_does_not_write_the_held_permission(self, poll_perms):
+        _seeder(VIEWER).seed_template(VIEWER)
+        seeder = _seeder(VIEWER_V2, reset_guard=_ApprovalGuard(gated={WRITE}))
+        seeder.seed_template(VIEWER_V2)
+
+        assert seeder.seed_template(VIEWER_V2) is SeedOutcome.SKIPPED_DETACHED
+        assert _codenames(Group.objects.get(name="viewer")) == [READ]
+
+    def test_once_approved_the_role_reattaches_and_upgrades_resume(self, poll_perms):
+        _seeder(VIEWER).seed_template(VIEWER)
+        seeder = _seeder(VIEWER_V2, reset_guard=_ApprovalGuard(gated={WRITE}))
+        seeder.seed_template(VIEWER_V2)
+        group = Group.objects.get(name="viewer")
+
+        group.permissions.add(poll_perms[WRITE])  # the checker approved
+        assert seeder.reattach_if_at_parity(group) is True
+        assert seeder.seed_template(VIEWER_V2) is SeedOutcome.UNCHANGED
+
+    def test_an_addition_the_flow_lets_through_upgrades_normally(self, poll_perms):
+        _seeder(VIEWER).seed_template(VIEWER)
+        guard = _ApprovalGuard(gated={WRITE}, approve_now=True)
+
+        outcome = _seeder(VIEWER_V2, reset_guard=guard).seed_template(VIEWER_V2)
+
+        group = Group.objects.get(name="viewer")
+        assert outcome is SeedOutcome.UPGRADED
+        assert _codenames(group) == sorted([READ, WRITE])
+        assert SeededRole.objects.get(group=group).detached is False
+
+    def test_an_ungated_addition_is_written_straight_on(self, poll_perms):
+        _seeder(VIEWER).seed_template(VIEWER)
+        guard = _ApprovalGuard(gated={DROP})
+
+        outcome = _seeder(VIEWER_V2, reset_guard=guard).seed_template(VIEWER_V2)
+
+        assert outcome is SeedOutcome.UPGRADED
+        assert guard.requested == []
+
+    def test_creation_is_the_baseline_and_not_gated(self, poll_perms):
+        guard = _ApprovalGuard(gated={WRITE})
+
+        outcome = _seeder(VIEWER_V2, reset_guard=guard).seed_template(VIEWER_V2)
+
+        assert outcome is SeedOutcome.CREATED
+        assert guard.requested == []
+        assert _codenames(Group.objects.get(name="viewer")) == sorted([READ, WRITE])
+
+    def test_a_release_narrowing_a_template_is_not_refused(self, poll_perms):
+        """Removals are the operator's call: an upgrade does not ask check_removals."""
+        _seeder(VIEWER_V2).seed_template(VIEWER_V2)
+        guard = _ApprovalGuard(gated=(), refuse={WRITE})
+
+        outcome = _seeder(VIEWER, reset_guard=guard).seed_template(VIEWER)
+
+        assert outcome is SeedOutcome.UPGRADED
+        assert _codenames(Group.objects.get(name="viewer")) == [READ]
+

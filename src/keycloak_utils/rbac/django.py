@@ -120,6 +120,7 @@ def seed_group(
     template_key: Optional[str] = None,
     adopt_matching: bool = False,
     on_created: Optional[Callable[[Group], None]] = None,
+    guard: Optional["ResetGuard"] = None,
 ) -> SeedOutcome:
     """Seed one group from one composition, and say what happened.
 
@@ -135,6 +136,11 @@ def seed_group(
     can be a coincidence; it is the explicit one-off for a project whose groups were
     created by an earlier, record-less seeder.
 
+    ``guard`` is the project's approval flow (:class:`ResetGuard`). An upgrade writes
+    through it, so an addition it gates is requested instead of attached and the
+    group stays detached while one is waiting. Creation does not: a new standard role
+    is the platform's baseline, not a change to a role people already hold.
+
     ``on_created`` is called after this function's own transaction has closed, so a
     callback that talks to an identity provider neither holds the write open across
     the network nor announces a group that was rolled back. A caller that wraps the
@@ -149,6 +155,7 @@ def seed_group(
             model=model,
             template_key=template_key or name,
             adopt_matching=adopt_matching,
+            guard=guard,
         )
     # Only on CREATED: an upgrade changes a composition, which an identity provider
     # that carries role names alone has nothing to learn from.
@@ -165,6 +172,7 @@ def _seed(
     model: Optional[type],
     template_key: str,
     adopt_matching: bool,
+    guard: Optional["ResetGuard"] = None,
 ) -> Tuple[Group, SeedOutcome]:
     """The writes of :func:`seed_group`; the caller holds the transaction.
 
@@ -204,6 +212,21 @@ def _seed(
         recorded_fingerprint=record.fingerprint if record else None,
         detached=bool(record and record.detached),
     )
+    if decision.write_permissions and not decision.create_record and guard is not None:
+        # An upgrade changes a role tenants already use, so it meets the approval
+        # flow the way a reset does: without this a release that adds a gated
+        # permission to a template reached every untouched tenant unapproved.
+        pending = _write_holding(group, resolve(), guard)
+        record.fingerprint = current_fingerprint(group)
+        record.template_key = template_key
+        # Detached while anything is held: re-attached at a fingerprint that is not
+        # the template's, the next run would "upgrade" again and write the held
+        # permission straight on.
+        record.detached = bool(pending)
+        _save(record, "fingerprint", "template_key", "detached")
+        if pending:
+            return group, SeedOutcome.UPGRADED_AWAITING_APPROVAL
+        return group, decision.outcome
     if decision.write_permissions:
         group.permissions.set(resolve())
     if decision.create_record:
@@ -231,10 +254,14 @@ def _save(record, *fields: str) -> None:
 
 
 class ResetGuard:
-    """What a project may want to say before a reset changes a role.
+    """What a project may want to say before a reset or an upgrade changes a role.
 
-    The default says nothing, and a reset then simply writes the template. A project
-    with an approval flow subclasses this so a reset cannot be used to walk around it.
+    The default says nothing, and both then simply write the template. A project with
+    an approval flow subclasses this so neither can be used to walk around it.
+
+    An upgrade asks only :meth:`gated_additions`: a release that narrows a template
+    takes the permission off every untouched role, which is the operator's call and
+    not one a tenant's checker can be asked to approve after the deploy.
     """
 
     def check_removals(self, group: Group, removing: List[Permission]) -> None:
@@ -252,10 +279,33 @@ class ResetGuard:
         """Request one gated addition. Return ``True`` if it is still waiting.
 
         ``False`` means the project's own flow attached it immediately -- to this
-        ``group``, since the reset reads the group back to decide whether it reached
-        the template.
+        ``group``, since the caller reads the group back to decide whether it reached
+        the template. ``actor`` is ``None`` for an upgrade: a deploy step has no user.
         """
         raise NotImplementedError
+
+
+def _write_holding(
+    group: Group, wanted: List[Permission], guard: ResetGuard, actor: Any = None
+) -> Tuple[str, ...]:
+    """Set ``group`` to ``wanted``, except that an addition ``guard`` gates is
+    requested through it instead of attached.
+
+    Returns the labels still waiting. The one write reset and upgrade both go through,
+    so a gated addition meets the project's checker whichever path brings it.
+    """
+    current_ids = set(group.permissions.values_list("id", flat=True))
+    adding = [p for p in wanted if p.id not in current_ids]
+    gated = list(guard.gated_additions(group, adding))
+    gated_ids = {permission.id for permission in gated}
+
+    group.permissions.set([p for p in wanted if p.id not in gated_ids])
+    held = [
+        permission
+        for permission in gated
+        if guard.request_addition(group, permission, actor)
+    ]
+    return tuple(sorted(permission_label(p) for p in held))
 
 
 @dataclass(frozen=True)
@@ -307,6 +357,7 @@ class RoleSeeder:
             model=self.model,
             template_key=template.key,
             on_created=self.on_created,
+            guard=self.reset_guard,
         )
 
     def seed_all(self) -> Dict[str, SeedOutcome]:
@@ -372,25 +423,13 @@ class RoleSeeder:
             wanted = resolve_permissions(self.registry.permissions_for(template))
             wanted_ids = {permission.id for permission in wanted}
             held_now = list(group.permissions.select_related("content_type"))
-            current_ids = {permission.id for permission in held_now}
 
             # Before anything is written: `set()` below removes as well as adds.
             self.reset_guard.check_removals(
                 group, [p for p in held_now if p.id not in wanted_ids]
             )
 
-            adding = [p for p in wanted if p.id not in current_ids]
-            gated = list(self.reset_guard.gated_additions(group, adding))
-            gated_ids = {permission.id for permission in gated}
-
-            group.permissions.set([p for p in wanted if p.id not in gated_ids])
-            held = [
-                permission
-                for permission in gated
-                if self.reset_guard.request_addition(group, permission, actor)
-            ]
-
-            pending = tuple(sorted(permission_label(p) for p in held))
+            pending = _write_holding(group, wanted, self.reset_guard, actor)
             record.fingerprint = current_fingerprint(group)
             record.detached = bool(pending)
             _save(record, "fingerprint", "detached")

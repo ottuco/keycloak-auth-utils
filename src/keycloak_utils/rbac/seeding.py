@@ -30,6 +30,9 @@ class SeedOutcome(str, Enum):
 
     CREATED = "created"
     UPGRADED = "upgraded"
+    # Upgraded, except for additions the project's guard holds for approval. The role
+    # stays detached until they are decided (`RoleSeeder.reattach_if_at_parity`).
+    UPGRADED_AWAITING_APPROVAL = "upgraded_awaiting_approval"
     UNCHANGED = "unchanged"
     DETACHED = "detached"
     SKIPPED_DETACHED = "skipped_detached"
