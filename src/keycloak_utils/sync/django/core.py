@@ -309,8 +309,15 @@ class KeycloakSync:
                     "directAccessGrantsEnabled": True,
                     "protocol": "openid-connect",
                     "fullScopeAllowed": True,
-                    "authorizationServicesEnabled": True,
                     "serviceAccountsEnabled": True,
+                }
+                if not kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
+                    # Enabling it is itself a write: Keycloak creates a default
+                    # resource, policy and permission on the client.
+                    payload["authorizationServicesEnabled"] = False
+                    return payload
+                payload |= {
+                    "authorizationServicesEnabled": True,
                     "authorizationSettings": {
                         "allowRemoteResourceManagement": True,
                         "decisionStrategy": "AFFIRMATIVE",
@@ -785,6 +792,12 @@ class KeycloakPermission(KeycloakSync):
         The method fetches permissions from the generator and processes them by creating
         Keycloak resources, scopes, and permissions, handling errors as needed.
         """
+        if not kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
+            logger.warning(
+                "KC_UTILS_SYNC_AUTHORIZATION is off: permissions are not synced to "
+                "Keycloak Authorization Services."
+            )
+            return
         while True:
             permission = self._get_next_object()
             if permission is None:
@@ -809,6 +822,12 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
     # or policy is created, and the role-permissions mapper is left alone. For a
     # project whose roles are composed in Django, where Keycloak carries only the name.
     sync_authorization: bool = True
+
+    @property
+    def _authorizes(self) -> bool:
+        """Whether this run writes Authorization Services: the class and the project
+        (``KC_UTILS_SYNC_AUTHORIZATION``) both have to want it."""
+        return self.sync_authorization and kc_conf.KC_UTILS_SYNC_AUTHORIZATION
 
     def _get_permissions(self, group) -> list[Permission]:
         return group.permissions.all()
@@ -913,7 +932,7 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
 
             try:
                 self.create_role(group)
-                if self.sync_authorization:
+                if self._authorizes:
                     self.get_or_create_policy(group)
                     self.add_policies_to_permissions(group)
             except ValueError as ve:
@@ -923,7 +942,7 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
-        if not self.sync_authorization:
+        if not self._authorizes:
             # The mapper publishes each role's permissions in the token. A name-only
             # push has no composition to publish.
             return
@@ -1406,7 +1425,7 @@ class KeycloakBase(KeycloakSync):
             resource_server["decisionStrategy"] = "UNANIMOUS"
             kc_admin.update_client_resource_server(client_id, resource_server)
 
-        if client_type == "private":
+        if client_type == "private" and kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
             update_resource_server()
 
         self.add_client_scope_to_client(client_id, "timezone")

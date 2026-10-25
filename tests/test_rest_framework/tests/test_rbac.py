@@ -5,6 +5,7 @@ fingerprint model (`polls.SeededRole` here, standing in for a real service) and 
 seeding, drift detection and reset-to-template from the library.
 """
 
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -904,3 +905,129 @@ class TestUpgradeHoldsGatedAdditions:
         assert outcome is SeedOutcome.UPGRADED
         assert _codenames(Group.objects.get(name="viewer")) == [READ]
 
+
+def _authz_calls(kc):
+    """Every Authorization Services call on a mocked admin client, by method name."""
+    return sorted(
+        {
+            call[0]
+            for call in kc.mock_calls
+            if "authz" in call[0] or "resource_server" in call[0]
+        }
+    )
+
+
+@pytest.mark.django_db
+class TestSyncWithoutAuthorization:
+    """#159880 AC3: with KC_UTILS_SYNC_AUTHORIZATION off, sync writes none of it.
+
+    A project's own source scan cannot see inside this library, so the guarantee is
+    tested here against a mocked admin API, routine by routine and then through the
+    `sync_keycloak` command the Django contrib app installs.
+    """
+
+    @pytest.fixture(autouse=True)
+    def authorization_off(self):
+        with mock.patch(
+            "keycloak_utils.contrib.django.conf.KC_UTILS_SYNC_AUTHORIZATION", False
+        ):
+            yield
+
+    @pytest.fixture
+    def kc(self):
+        from keycloak_utils.contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+
+        kc = mock.MagicMock()
+        kc.connection.realm_name = "realm"
+        kc.get_realm.return_value = {}
+        kc.get_clients.return_value = [{"clientId": KC_UTILS_KC_CLIENT_ID, "id": "cid"}]
+        kc.get_client_roles.side_effect = lambda *_: [
+            {"name": g.name, "id": f"rid-{g.pk}"} for g in Group.objects.all()
+        ]
+        with mock.patch("keycloak_utils.sync.django.core.kc_admin", kc), mock.patch(
+            "keycloak_utils.sync.django.mixins.kc_admin", kc
+        ), mock.patch(
+            "keycloak_utils.contrib.django.management.commands.sync_keycloak.kc_admin",
+            kc,
+        ):
+            yield kc
+
+    def test_role_sync_pushes_names_only(self, poll_perms, kc):
+        from keycloak_utils.sync.django.core import KeycloakRole
+
+        Group.objects.create(name="viewer").permissions.add(poll_perms[READ])
+
+        KeycloakRole().run_routine()
+
+        assert _authz_calls(kc) == []
+        assert [call[0] for call in kc.mock_calls] == [
+            "get_clients",
+            "get_client_roles",
+        ]
+
+    def test_permission_sync_writes_nothing(self, poll_perms, kc):
+        from keycloak_utils.sync.django.core import KeycloakPermission
+
+        KeycloakPermission().run_routine()
+
+        assert _authz_calls(kc) == []
+
+    def test_a_new_private_client_has_authorization_off(self, kc):
+        from keycloak_utils.sync.django.core import KeycloakBase
+
+        KeycloakBase("realm").create_client("core", "private")
+
+        payload = kc.create_client.call_args[0][0]
+        assert payload["authorizationServicesEnabled"] is False
+        assert "authorizationSettings" not in payload
+        assert _authz_calls(kc) == []
+
+    def test_the_command_with_every_routine_writes_none(self, poll_perms, kc):
+        from django.core.management import load_command_class
+
+        Group.objects.create(name="viewer").permissions.add(poll_perms[READ])
+        command = load_command_class("keycloak_utils.contrib.django", "sync_keycloak")
+        parser = command.create_parser("manage.py", "sync_keycloak")
+        options = vars(
+            parser.parse_args(
+                [
+                    "-migrate-base",
+                    "-migrate-groups",
+                    "-migrate-permissions",
+                    "-migrate-predefined-groups",
+                    "-migrate-role-perms-mapper",
+                    "--server-url",
+                    "http://keycloak.invalid/",
+                    "--realm-name",
+                    "realm",
+                ]
+            )
+        )
+
+        clerk = SimpleNamespace(name="clerk", permissions=[poll_perms[WRITE]])
+        with mock.patch(
+            "keycloak_utils.sync.django.core.get_predefined_roles_provider",
+            return_value=lambda: [clerk],
+        ):
+            command.handle(**options)
+
+        assert _authz_calls(kc) == []
+        # It did run: the base routine created clients and the role sync named roles.
+        assert kc.create_client.called
+        assert kc.get_client_roles.called
+
+    def test_on_by_default_the_full_sync_still_authorizes(self, poll_perms, kc):
+        from keycloak_utils.sync.django.core import KeycloakRole
+
+        Group.objects.create(name="viewer")
+        with mock.patch(
+            "keycloak_utils.contrib.django.conf.KC_UTILS_SYNC_AUTHORIZATION", True
+        ), mock.patch.object(
+            KeycloakRole, "get_or_create_policy"
+        ) as policy, mock.patch.object(
+            KeycloakRole, "add_policies_to_permissions"
+        ), mock.patch.object(
+            KeycloakRole, "sync_protocol_mapper"
+        ):
+            KeycloakRole().run_routine()
+        assert policy.called

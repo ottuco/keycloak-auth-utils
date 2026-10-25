@@ -340,8 +340,9 @@ seeder.seed_all()             # {"support": SeedOutcome.CREATED, ...}
 seeder.reset_to_template(group)
 ```
 
-Each run reports one of six outcomes per template: `created`, `upgraded` (an untouched
-group gets the template's new composition), `unchanged`, `detached` (the group was edited,
+Each run reports one of seven outcomes per template: `created`, `upgraded` (an untouched
+group gets the template's new composition), `upgraded_awaiting_approval` (upgraded except
+for additions the project's guard holds; see below), `unchanged`, `detached` (the group was edited,
 so it is never written again until reset), `skipped_detached`, and `skipped_foreign` (a
 group of that name existed before the seeder did, so it is the tenant's). Seeding makes
 no Keycloak call, so it works with Keycloak switched off.
@@ -361,11 +362,20 @@ def test_every_rule_has_a_manifest_decision():
 `reset_to_template` raises `UnknownTemplateError` for a role whose template is
 no longer in the registry.
 
-`reset_to_template` takes an optional `ResetGuard` so a project with an approval flow can
-refuse removals and route sensitive additions through that flow instead of writing them.
+`RoleSeeder` takes an optional `reset_guard` (a `ResetGuard`) so a project with an approval
+flow can refuse removals on a reset and route sensitive additions through that flow
+instead of writing them. Both a reset and an upgrade ask it about additions: a release
+that adds a gated permission to a template reaches untouched roles only through the
+project's checker. Creating a role is not gated, being the platform's baseline, and an
+upgrade does not ask about removals, since narrowing a template is the operator's call.
 A role with such an addition outstanding stays detached; nothing in the library watches
 for the approval, so the project calls `seeder.reattach_if_at_parity(group)` once it has
 attached the permission.
+
+A project whose roles are composed in Django sets `KC_UTILS_SYNC_AUTHORIZATION = False`.
+Every `sync_keycloak` routine then writes no Authorization Services object: role sync
+pushes names only, `-migrate-permissions` does nothing, and a new private client is
+created with authorization off.
 
 ## Release notes
 
@@ -394,6 +404,12 @@ attached the permission.
 * `KeycloakRole(sync_authorization=False)` and the new `KeycloakRoleName` push role
   names only: no authorization scope, permission or policy is written, and the
   role-permissions mapper is left alone. `KeycloakRole`'s default behaviour is unchanged.
+* `KC_UTILS_SYNC_AUTHORIZATION` (default `True`): `False` makes every sync routine skip
+  Authorization Services, including `sync_keycloak -migrate-groups`,
+  `-migrate-permissions`, `-migrate-predefined-groups` and `-migrate-base`.
+* A `RoleSeeder` upgrade writes through its `reset_guard`, so gated additions are requested
+  rather than attached; the new outcome `upgraded_awaiting_approval` reports a role that
+  is waiting, and it stays detached until `reattach_if_at_parity`.
 
 ## Test
 
