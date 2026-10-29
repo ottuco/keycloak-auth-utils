@@ -28,7 +28,7 @@ from keycloak_utils.rbac import (
     decide_seed,
     fingerprint_for,
 )
-from keycloak_utils.rbac.django import ResetGuard, RoleSeeder
+from keycloak_utils.rbac.django import ResetGuard, RoleSeeder, seed_group
 from tests.test_rest_framework.polls.models import SeededRole
 
 READ = "polls.view_poll"
@@ -885,6 +885,28 @@ class TestUpgradeHoldsGatedAdditions:
 
         assert outcome is SeedOutcome.UPGRADED
         assert guard.requested == []
+
+    def test_adopting_a_matching_group_never_asks_the_guard(self, poll_perms):
+        """Adoption only writes the record, so it never comes back as awaiting approval.
+        The `-adopt-predefined-groups` log reports an adoption by the UNCHANGED outcome."""
+        group = Group.objects.create(name="viewer")
+        group.permissions.add(poll_perms[READ], poll_perms[WRITE])
+        guard = _ApprovalGuard(gated={READ, WRITE})
+
+        outcome = seed_group(
+            name="viewer",
+            wanted=[READ, WRITE],
+            resolve=lambda: [poll_perms[READ], poll_perms[WRITE]],
+            model=SeededRole,
+            template_key="viewer",
+            adopt_matching=True,
+            guard=guard,
+        )
+
+        record = SeededRole.objects.get(group=group)
+        assert outcome is SeedOutcome.UNCHANGED
+        assert guard.requested == []
+        assert (record.detached, record.fingerprint) == (False, fingerprint_for([READ, WRITE]))
 
     def test_creation_is_the_baseline_and_not_gated(self, poll_perms):
         guard = _ApprovalGuard(gated={WRITE})

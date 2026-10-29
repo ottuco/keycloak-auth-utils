@@ -375,7 +375,9 @@ attached the permission.
 A project whose roles are composed in Django sets `KC_UTILS_SYNC_AUTHORIZATION = False`.
 Every `sync_keycloak` routine then writes no Authorization Services object: role sync
 pushes names only, `-migrate-permissions` does nothing, and a new private client is
-created with authorization off.
+created with authorization off. Clients that already exist are not changed: one that has
+Authorization Services keeps it, with its policies and resources, until it is turned off
+in Keycloak.
 
 ## Release notes
 
