@@ -2,12 +2,22 @@ name: Tests with tox
 
 on:
   pull_request:
+    # Drafts are skipped (job-level `if` below); ready_for_review runs the checks
+    # when the PR leaves draft.
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# A new push to a PR cancels its superseded run.
+concurrency:
+  group: tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
 
     # ubuntu-latest is 26.04, which has no Python 3.9 build (3.9 is end of life).
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 4
