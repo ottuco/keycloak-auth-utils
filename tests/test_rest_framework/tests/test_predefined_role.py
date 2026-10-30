@@ -70,7 +70,13 @@ class TestSeedDjangoGroups:
             "seed_create_perm"
         ]
 
-    def test_updates_existing_group_replacing_permissions(self, predefined_role_cls):
+    def test_an_existing_group_is_not_overwritten_without_a_record(
+        self, predefined_role_cls
+    ):
+        """It used to `permissions.set()` every predefined group on every run, so a
+        permission added by hand vanished at the next sync. With no fingerprint model
+        there is no way to tell an edit from an older provider, so the group is left
+        exactly as it is (#159879 R2)."""
         from django.contrib.auth.models import Group, Permission
         from django.contrib.contenttypes.models import ContentType
 
@@ -92,7 +98,7 @@ class TestSeedDjangoGroups:
 
         group.refresh_from_db()
         codenames = set(group.permissions.values_list("codename", flat=True))
-        assert codenames == {"seed_new_perm"}
+        assert codenames == {"seed_old_perm"}
 
     def test_handles_role_with_empty_permissions(self, predefined_role_cls):
         from django.contrib.auth.models import Group

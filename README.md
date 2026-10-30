@@ -297,6 +297,124 @@ from rest_framework.pagination import PageNumberPagination
 KC_UTILS_PERMISSIONS_PAGINATION_CLASS = PageNumberPagination
 ```
 
+## Role templates and seeding (`keycloak_utils.rbac`)
+
+Since 0.20.0 the role-authoring mechanism the Ottu services share lives here. A project
+supplies three things and writes no seeder logic of its own:
+
+1. **Manifest content**: which permissions a role may carry, and the rules it leaves out.
+2. **Template content**: the standard roles every tenant is seeded with.
+3. **A fingerprint model**: the record of what the seeder last wrote to each group.
+
+```python
+# myproject/rbac.py
+from keycloak_utils.rbac import Manifest, ManifestEntry, RoleTemplate, TemplateRegistry
+
+MANIFEST = Manifest(
+    [
+        ManifestEntry("refund", "payment.refund", "Refund payments", "...", "Payments"),
+        ManifestEntry("inquiry", "payment.inquiry", "Check status", "...", "Payments"),
+    ],
+    excluded={"internal_sweep": "operator-only; never on a role"},
+)
+TEMPLATES = TemplateRegistry(
+    MANIFEST,
+    [RoleTemplate("support", "Support", "Look into payments", ("inquiry",))],
+)
+```
+
+```python
+# myproject/models.py -- the library ships no models and no migrations
+class SeededRole(models.Model):
+    group = models.OneToOneField("auth.Group", on_delete=models.CASCADE)
+    template_key = models.CharField(max_length=150)
+    fingerprint = models.CharField(max_length=64)
+    detached = models.BooleanField(default=False)
+```
+
+```python
+from keycloak_utils.rbac.django import RoleSeeder
+
+seeder = RoleSeeder(TEMPLATES, "myproject.SeededRole")
+seeder.seed_all()             # {"support": SeedOutcome.CREATED, ...}
+seeder.reset_to_template(group)
+```
+
+Each run reports one of seven outcomes per template: `created`, `upgraded` (an untouched
+group gets the template's new composition), `upgraded_awaiting_approval` (upgraded except
+for additions the project's guard holds; see below), `unchanged`, `detached` (the group was edited,
+so it is never written again until reset), `skipped_detached`, and `skipped_foreign` (a
+group of that name existed before the seeder did, so it is the tenant's). Seeding makes
+no Keycloak call, so it works with Keycloak switched off.
+
+The completeness gate keeps the manifest honest. Call it from the project's own test
+suite, against its own rule registry:
+
+```python
+from bridgekeeper import perms
+from keycloak_utils.rbac import assert_complete
+
+def test_every_rule_has_a_manifest_decision():
+    assert_complete(MANIFEST, perms)
+```
+
+`on_created` runs after the seed's own transaction, so it may call an identity provider.
+`reset_to_template` raises `UnknownTemplateError` for a role whose template is
+no longer in the registry.
+
+`RoleSeeder` takes an optional `reset_guard` (a `ResetGuard`) so a project with an approval
+flow can refuse removals on a reset and route sensitive additions through that flow
+instead of writing them. Both a reset and an upgrade ask it about additions: a release
+that adds a gated permission to a template reaches untouched roles only through the
+project's checker. Creating a role is not gated, being the platform's baseline, and an
+upgrade does not ask about removals, since narrowing a template is the operator's call.
+A role with such an addition outstanding stays detached; nothing in the library watches
+for the approval, so the project calls `seeder.reattach_if_at_parity(group)` once it has
+attached the permission.
+
+A project whose roles are composed in Django sets `KC_UTILS_SYNC_AUTHORIZATION = False`.
+Every `sync_keycloak` routine then writes no Authorization Services object: role sync
+pushes names only, `-migrate-permissions` does nothing, and a new private client is
+created with authorization off. Clients that already exist are not changed: one that has
+Authorization Services keeps it, with its policies and resources, until it is turned off
+in Keycloak.
+
+## Release notes
+
+### 0.20.0
+
+* **Dropped Python 3.9.** The minimum supported version is now Python 3.10, and the test
+  matrix runs 3.10–3.12 (Python 3.9 reached end of life in October 2025).
+* New `keycloak_utils.rbac` package: manifest, completeness gate, role templates, the
+  pure seed decision, and `RoleSeeder` for Django.
+* **Behaviour change:** `KeycloakPredefinedRole` no longer replaces the permissions of an
+  existing group on every run, which silently removed whatever an administrator had added.
+  * Set `KC_UTILS_SEEDED_ROLE_MODEL = "app_label.Model"` to get drift-aware seeding: an
+    untouched group is upgraded, an edited one is detached and left alone.
+  * Without that setting, a group the routine creates is still filled, but an existing
+    group is never modified; a warning names it.
+  * Projects whose predefined groups were created by an earlier version should run
+    `sync_keycloak -adopt-predefined-groups` once (`KeycloakPredefinedRoleAdoption`, or
+    `KeycloakPredefinedRole(adopt_existing=True)`). It records a group that still
+    matches the provider exactly, so upgrades reach it from then on. Until then such a
+    group is skipped with a warning. The adoption refuses to run without
+    `KC_UTILS_SEEDED_ROLE_MODEL`.
+  * This includes an existing group with no permissions at all, such as one a login
+    created for a realm role before the first sync. Earlier versions filled it on the
+    next run; it now stays empty, with the same warning, until it is given its
+    permissions by hand.
+  * The Keycloak push now carries what each predefined Django group holds, not the
+    provider's list, so an edited group and its Keycloak policies stay in step.
+* `KeycloakRole(sync_authorization=False)` and the new `KeycloakRoleName` push role
+  names only: no authorization scope, permission or policy is written, and the
+  role-permissions mapper is left alone. `KeycloakRole`'s default behaviour is unchanged.
+* `KC_UTILS_SYNC_AUTHORIZATION` (default `True`): `False` makes every sync routine skip
+  Authorization Services, including `sync_keycloak -migrate-groups`,
+  `-migrate-permissions`, `-migrate-predefined-groups` and `-migrate-base`.
+* A `RoleSeeder` upgrade writes through its `reset_guard`, so gated additions are requested
+  rather than attached; the new outcome `upgraded_awaiting_approval` reports a role that
+  is waiting, and it stays detached until `reattach_if_at_parity`.
+
 ## Test
 
 ```bash
@@ -651,6 +769,7 @@ python manage.py sync_keycloak \
 - `-migrate-users`: Migrate users from Django to Keycloak.
 - `-migrate-permissions`: Migrate permissions from Django to Keycloak.
 - `--migrate-predefined-groups`: Migrate predefined roles from Django to Keycloak.
+- `-adopt-predefined-groups`: The same, and records the existing predefined groups that still match the provider. Run once when adopting `KC_UTILS_SEEDED_ROLE_MODEL`.
 - `-migrate-role-perms-mapper`: Sync the role-permissions protocol mapper to the frontend client (can be run standalone).
 - `-delegate-celery`: Delegates the task to a celery worker
 - `--realm-name`: Specify the Keycloak realm to operate on.

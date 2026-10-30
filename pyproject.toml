@@ -18,24 +18,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keycloak-utils"
-version = "0.19.0"
+version = "0.20.0"
 authors = [
     { name = "Jerin Peter George", email = "jerinpetergeorge@gmail.com" },
 ]
 description = "Helper classes for keycloak authentication in Django and FastAPI"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 classifiers = [
     "Environment :: Web Environment",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Utilities",
 ]
 dependencies = [

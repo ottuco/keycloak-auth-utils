@@ -127,6 +127,21 @@ KC_UTILS_PREDEFINED_ROLES_PROVIDER: str = getattr(
     settings, "KC_UTILS_PREDEFINED_ROLES_PROVIDER", ""
 )
 
+# "app_label.ModelName" of the project's fingerprint model (see
+# keycloak_utils.rbac.django). With it, KeycloakPredefinedRole upgrades a predefined
+# group it wrote and detaches one that was edited; without it, an existing group is
+# left as it is.
+KC_UTILS_SEEDED_ROLE_MODEL: str = getattr(settings, "KC_UTILS_SEEDED_ROLE_MODEL", "")
+
+# False: the sync routines write no Authorization Services object -- no resource,
+# scope, permission or policy, no resource-server setting, and new private clients are
+# created with authorization off. Role sync then pushes names only, and
+# -migrate-permissions does nothing. For a project whose roles are composed in Django,
+# where Keycloak carries identity and role names alone.
+KC_UTILS_SYNC_AUTHORIZATION: bool = getattr(
+    settings, "KC_UTILS_SYNC_AUTHORIZATION", True
+)
+
 KC_UTILS_PERMISSIONS_PAGINATION_CLASS: Optional[type] = getattr(
     settings, "KC_UTILS_PERMISSIONS_PAGINATION_CLASS", None,
 )
