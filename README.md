@@ -299,7 +299,7 @@ KC_UTILS_PERMISSIONS_PAGINATION_CLASS = PageNumberPagination
 
 ## Role templates and seeding (`keycloak_utils.rbac`)
 
-Since 0.20.0 the role-authoring mechanism the Ottu services share lives here. A project
+Since 0.21.0 the role-authoring mechanism the Ottu services share lives here. A project
 supplies three things and writes no seeder logic of its own:
 
 1. **Manifest content**: which permissions a role may carry, and the rules it leaves out.
@@ -381,7 +381,7 @@ in Keycloak.
 
 ## Release notes
 
-### 0.20.0
+### 0.21.0
 
 * **Dropped Python 3.9.** The minimum supported version is now Python 3.10, and the test
   matrix runs 3.10–3.12 (Python 3.9 reached end of life in October 2025).
