@@ -383,6 +383,8 @@ in Keycloak.
 
 ### 0.20.0
 
+* **Dropped Python 3.9.** The minimum supported version is now Python 3.10, and the test
+  matrix runs 3.10–3.12 (Python 3.9 reached end of life in October 2025).
 * New `keycloak_utils.rbac` package: manifest, completeness gate, role templates, the
   pure seed decision, and `RoleSeeder` for Django.
 * **Behaviour change:** `KeycloakPredefinedRole` no longer replaces the permissions of an
