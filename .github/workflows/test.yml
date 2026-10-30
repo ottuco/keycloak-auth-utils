@@ -15,14 +15,13 @@ jobs:
   build:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
 
-    # ubuntu-latest is 26.04, which has no Python 3.9 build (3.9 is end of life).
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v3
