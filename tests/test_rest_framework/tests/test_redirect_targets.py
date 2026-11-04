@@ -346,3 +346,148 @@ class TestAllowedHosts:
         response = views.AuthenticateView.as_view()(request)
 
         _assert_rejected(response, "next")
+
+
+ALLOWED_TARGETS = [
+    pytest.param("/dashboard", "/error", id="relative"),
+    pytest.param("/dashboard?tab=1&q=a%20b", "/error?x=1", id="relative-with-query"),
+    pytest.param(
+        "http://testserver/dashboard",
+        "http://testserver/error",
+        id="own-host",
+    ),
+    pytest.param(
+        "https://app.example.com/home",
+        "https://app.example.com/error",
+        id="listed-host",
+    ),
+]
+
+
+def _snapshot(view, path, params=None, *, session=None, user=None):
+    request = _request(path, params, session=session, user=user)
+    response = view.as_view()(request)
+    return (
+        response.status_code,
+        sorted(response.items()),
+        response.content,
+        dict(request.session.items()),
+    )
+
+
+def _before_and_after(monkeypatch, *args, **kwargs):
+    # The fix only adds `_reject_disallowed_targets` early returns ahead of untouched
+    # code, so with it returning None every view runs exactly as before the fix.
+    with monkeypatch.context() as before:
+        before.setattr(views, "_reject_disallowed_targets", lambda *a, **kw: None)
+        old = _snapshot(*args, **kwargs)
+    return old, _snapshot(*args, **kwargs)
+
+
+class TestAllowedTargetsUnchanged:
+    """Allowed targets give the same response and session as before the fix."""
+
+    @pytest.fixture(autouse=True)
+    def _fixed_randomness(self, monkeypatch):
+        monkeypatch.setattr(
+            conf,
+            "KC_UTILS_ALLOWED_REDIRECT_HOSTS",
+            ["app.example.com"],
+        )
+        monkeypatch.setattr(
+            views,
+            "get_random_string",
+            lambda length, *a, **kw: "r" * length,
+        )
+
+    def test_patched_view_is_the_pre_fix_path(self, monkeypatch):
+        old, new = _before_and_after(
+            monkeypatch,
+            views.LogoutView,
+            "/oidc/logout",
+            {"next": "/dashboard", "error": "//evil.com"},
+        )
+
+        assert old[0] == 302
+        assert old[1] == [
+            ("Content-Type", "text/html; charset=utf-8"),
+            (
+                "Location",
+                "//evil.com?error=id_token+is+missing+from+the+session%2C+cannot+logout",
+            ),
+        ]
+        assert new[0] == 400
+
+    @pytest.mark.parametrize(("next_url", "error_url"), ALLOWED_TARGETS)
+    def test_login(self, monkeypatch, next_url, error_url):
+        old, new = _before_and_after(
+            monkeypatch,
+            views.AuthenticateView,
+            "/oidc/login",
+            {"next": next_url, "error": error_url},
+        )
+
+        assert old[0] == 302
+        assert new == old
+
+    @pytest.mark.parametrize(("next_url", "error_url"), ALLOWED_TARGETS)
+    @pytest.mark.parametrize(
+        "session",
+        [
+            pytest.param({"session_id_token": "id-token"}, id="with-id-token"),
+            pytest.param({}, id="without-id-token"),
+        ],
+    )
+    def test_logout(self, monkeypatch, next_url, error_url, session):
+        old, new = _before_and_after(
+            monkeypatch,
+            views.LogoutView,
+            "/oidc/logout",
+            {"next": next_url, "error": error_url},
+            session=session,
+        )
+
+        assert old[0] == 302
+        assert new == old
+
+    @pytest.mark.parametrize(("next_url", "error_url"), ALLOWED_TARGETS)
+    @pytest.mark.parametrize(
+        ("params", "session"),
+        [
+            pytest.param(
+                {"code": "auth-code", "session_state": "kc-session"},
+                {"session_challenge": "verifier"},
+                id="auth",
+            ),
+            pytest.param({"error": "access_denied"}, {}, id="error"),
+            pytest.param(
+                {"state": "state-1"},
+                {"session_logout_state": "state-1"},
+                id="logout",
+            ),
+            pytest.param(
+                {"state": "other"},
+                {"session_logout_state": "state-1"},
+                id="logout-bad-state",
+            ),
+            pytest.param({}, {}, id="unknown"),
+        ],
+    )
+    def test_callback(self, monkeypatch, next_url, error_url, params, session):
+        user = get_user_model().objects.create_user(username="kc-user")
+        monkeypatch.setattr(views.auth, "authenticate", lambda *a, **kw: user)
+
+        old, new = _before_and_after(
+            monkeypatch,
+            views.CallbackView,
+            "/oidc/callback",
+            params,
+            session={
+                "session_next_url": next_url,
+                "session_fail_url": error_url,
+                **session,
+            },
+        )
+
+        assert old[0] == 302
+        assert new == old
