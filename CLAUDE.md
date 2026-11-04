@@ -96,8 +96,8 @@ PYTHONPATH=. .venv/bin/pytest tests/test_rest_framework/ -v
 
 ## Python Support
 
-- Requires Python 3.7+
-- Tested on Python 3.7, 3.8, 3.9, 3.10, 3.11
+- Requires Python 3.10+
+- Tested on Python 3.10, 3.11, 3.12
 
 ## Common Development Tasks
 
@@ -156,8 +156,7 @@ Key environment variables for configuration:
 
 ## Known Issues
 
-- The codebase uses Python 3.10+ union syntax (`dict | str`) in some places while claiming to support Python 3.7+
-- EventConsumer class cannot be imported in Python 3.7-3.9 due to this incompatibility
+- None currently.
 
 ## Contributing
 

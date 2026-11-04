@@ -1,12 +1,13 @@
 import logging
 from contextlib import contextmanager
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from keycloak import KeycloakConnectionError, KeycloakGetError
 
 from keycloak_utils.sync.kc_admin import kc_admin
 from keycloak_utils.utils import schema_based
 
+from ... import conf as kc_conf
 from ...conf import (
     KC_UTILS_KC_ADMIN_ID,
     KC_UTILS_KC_ADMIN_PASSWORD,
@@ -51,6 +52,13 @@ class Command(BaseCommand):
             "extra_args": lambda self: [],
             "soft_time_limit": 1000,
         },
+        "adopt_predefined_groups": {
+            "classpath": (
+                "keycloak_utils.sync.django.core.KeycloakPredefinedRoleAdoption"
+            ),
+            "extra_args": lambda self: [],
+            "soft_time_limit": 1000,
+        },
         "migrate_role_perms_mapper": {
             "classpath": "keycloak_utils.sync.django.core.KeycloakRolePermsMapper",
             "extra_args": lambda self: [],
@@ -88,6 +96,16 @@ class Command(BaseCommand):
             "-migrate-predefined-groups",
             action="store_true",
             help="Migrate predefined roles from Django to Keycloak",
+            default=False,
+        )
+        parser.add_argument(
+            "-adopt-predefined-groups",
+            action="store_true",
+            help=(
+                "Migrate predefined roles and record the existing groups that still "
+                "match the provider, so later updates reach them. Run once; needs "
+                "KC_UTILS_SEEDED_ROLE_MODEL."
+            ),
             default=False,
         )
         parser.add_argument(
@@ -194,6 +212,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self._validate_options(options)
+
+        if (
+            options["adopt_predefined_groups"]
+            and not kc_conf.KC_UTILS_SEEDED_ROLE_MODEL
+        ):
+            # Before any connection, and before a Celery worker is handed the job.
+            raise CommandError(
+                "-adopt-predefined-groups needs KC_UTILS_SEEDED_ROLE_MODEL: there is "
+                "nowhere to record the groups without it."
+            )
 
         self.perms = (
             self.desired_models_perms_map if self.desired_models_perms_map else {}
