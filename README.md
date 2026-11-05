@@ -419,6 +419,20 @@ in Keycloak.
 
 ## Release notes
 
+### 0.21.2
+
+* **Auth — sign in to the existing Django user whose username differs only in case.**
+  The SSO backend now matches the token's `preferred_username` against the stored
+  username ignoring case, so a user saved as `Sara.K` is no longer duplicated when
+  Keycloak sends `sara.k`. An exact-spelling match wins; tokens carrying
+  `KC_UTILS_USER_SUPERADMIN_ROLE` match exactly only, so a privileged token can never
+  land on a look-alike row. Reusable as
+  `keycloak_utils.contrib.django.auth.stored_username(claims)`.
+* **`KC_UTILS_ALLOWED_REDIRECT_HOSTS` now also accepts a single host as a string**, not
+  only a list. A refused redirect target now names the setting in the warning log, and
+  the README documents the behavior behind a reverse proxy (`USE_X_FORWARDED_HOST` /
+  `SECURE_PROXY_SSL_HEADER`).
+
 ### 0.21.1
 
 * **Security fix — open redirect in the OIDC views.** `oidc/login`, `oidc/logout`
