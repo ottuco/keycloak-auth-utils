@@ -266,7 +266,12 @@ KC_UTILS_ALLOWED_REDIRECT_HOSTS = ["app.example.com", "localhost:3000"]
 ```
 
 Each entry is compared exactly with the URL's `host[:port]`: give the port when the
-URL has one, and give a list, not a single string.
+URL has one, and no scheme. A single host may also be given as a string.
+
+"The request's own host" is what Django's `request.get_host()` returns. Behind a
+reverse proxy that rewrites `Host`, set `USE_X_FORWARDED_HOST = True` (and
+`SECURE_PROXY_SSL_HEADER` for `https`), or list the public host here; otherwise an
+absolute URL on your public host is refused. Relative paths always work.
 
 | Setting | Default | Description |
 |---|---|---|

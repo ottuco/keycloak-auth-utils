@@ -270,10 +270,10 @@ def test_rejected_target_is_logged(caplog):
         views.AuthenticateView.as_view()(request)
 
     # Without a log line, a refused link shows up only as a bare 400 in the proxy.
-    assert any(
-        r.levelno == logging.WARNING and "next" in r.getMessage()
-        for r in caplog.records
-    )
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+        "Refused next redirect target '//evil.com'; if that host is yours, "
+        "list it in KC_UTILS_ALLOWED_REDIRECT_HOSTS",
+    ]
 
 
 class TestLogoutThenCallback:
@@ -335,6 +335,23 @@ class TestAllowedHosts:
 
         assert listed.status_code == 302
         _assert_rejected(other, "next")
+
+    def test_a_single_host_given_as_a_string_is_one_host(self, monkeypatch):
+        monkeypatch.setattr(conf, "KC_UTILS_ALLOWED_REDIRECT_HOSTS", "app.example.com")
+
+        listed = views.AuthenticateView.as_view()(
+            _request(
+                "/oidc/login",
+                {"next": "https://app.example.com/home", "error": "/e"},
+            ),
+        )
+        # Unpacked letter by letter, the string would allow a host named "a".
+        letter = views.AuthenticateView.as_view()(
+            _request("/oidc/login", {"next": "https://a/home", "error": "/e"}),
+        )
+
+        assert listed.status_code == 302
+        _assert_rejected(letter, "next")
 
     def test_https_request_rejects_an_http_target_on_its_own_host(self):
         request = _request(
