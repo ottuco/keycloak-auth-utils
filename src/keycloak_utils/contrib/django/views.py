@@ -32,9 +32,12 @@ def is_allowed_redirect(request: HttpRequest, url: str) -> bool:
     True if `url` is safe to redirect to: a relative path, or an absolute URL on the
     request's own host or on a host in `KC_UTILS_ALLOWED_REDIRECT_HOSTS`.
     """
+    extra_hosts = conf.KC_UTILS_ALLOWED_REDIRECT_HOSTS
+    if isinstance(extra_hosts, str):
+        extra_hosts = [extra_hosts]
     return url_has_allowed_host_and_scheme(
         url,
-        allowed_hosts={request.get_host(), *conf.KC_UTILS_ALLOWED_REDIRECT_HOSTS},
+        allowed_hosts={request.get_host(), *extra_hosts},
         require_https=request.is_secure(),
     )
 
@@ -53,7 +56,12 @@ def _reject_disallowed_targets(
         (conf.KC_UTILS_OIDC_REDIRECT_ERROR_FIELD_NAME, failure_url),
     ):
         if not is_allowed_redirect(request, url):
-            log.warning("Refused %s redirect target %r", field_name, url[:200])
+            log.warning(
+                "Refused %s redirect target %r; if that host is yours, "
+                "list it in KC_UTILS_ALLOWED_REDIRECT_HOSTS",
+                field_name,
+                url[:200],
+            )
             return HttpResponseBadRequest(
                 f"{field_name} parameter is not an allowed redirect target",
             )
