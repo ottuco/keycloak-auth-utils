@@ -11,9 +11,13 @@ from typing import Any, Callable, Dict, Generator, List, Optional, cast
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Q, QuerySet
 
+from ...contrib.django import conf as kc_conf
 from ...contrib.django.conf import KC_UTILS_KC_CLIENT_ID
+from ...rbac.django import permission_label, seed_group
+from ...rbac.seeding import SeedOutcome
 from ..kc_admin import kc_admin
 from ..predefined import get_predefined_roles_provider
 from .mixins import ProtocolMapperMixin
@@ -305,8 +309,15 @@ class KeycloakSync:
                     "directAccessGrantsEnabled": True,
                     "protocol": "openid-connect",
                     "fullScopeAllowed": True,
-                    "authorizationServicesEnabled": True,
                     "serviceAccountsEnabled": True,
+                }
+                if not kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
+                    # Enabling it is itself a write: Keycloak creates a default
+                    # resource, policy and permission on the client.
+                    payload["authorizationServicesEnabled"] = False
+                    return payload
+                payload |= {
+                    "authorizationServicesEnabled": True,
                     "authorizationSettings": {
                         "allowRemoteResourceManagement": True,
                         "decisionStrategy": "AFFIRMATIVE",
@@ -781,6 +792,12 @@ class KeycloakPermission(KeycloakSync):
         The method fetches permissions from the generator and processes them by creating
         Keycloak resources, scopes, and permissions, handling errors as needed.
         """
+        if not kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
+            logger.warning(
+                "KC_UTILS_SYNC_AUTHORIZATION is off: permissions are not synced to "
+                "Keycloak Authorization Services."
+            )
+            return
         while True:
             permission = self._get_next_object()
             if permission is None:
@@ -801,6 +818,16 @@ class KeycloakPermission(KeycloakSync):
 class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
     current_role: str = None  # The current role ID in Keycloak
     current_policy: str = None  # The current policy ID in Keycloak
+    # False pushes the role NAME and nothing else: no authorization scope, permission
+    # or policy is created, and the role-permissions mapper is left alone. For a
+    # project whose roles are composed in Django, where Keycloak carries only the name.
+    sync_authorization: bool = True
+
+    @property
+    def _authorizes(self) -> bool:
+        """Whether this run writes Authorization Services: the class and the project
+        (``KC_UTILS_SYNC_AUTHORIZATION``) both have to want it."""
+        return self.sync_authorization and kc_conf.KC_UTILS_SYNC_AUTHORIZATION
 
     def _get_permissions(self, group) -> list[Permission]:
         return group.permissions.all()
@@ -905,8 +932,9 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
 
             try:
                 self.create_role(group)
-                self.get_or_create_policy(group)
-                self.add_policies_to_permissions(group)
+                if self._authorizes:
+                    self.get_or_create_policy(group)
+                    self.add_policies_to_permissions(group)
             except ValueError as ve:
                 logger.error(f"Skipping invalid permission: {ve}")
                 continue
@@ -914,12 +942,29 @@ class KeycloakRole(ProtocolMapperMixin, KeycloakSync):
                 logger.error(f"Error processing group '{group}': {e}")
                 raise e
 
+        if not self._authorizes:
+            # The mapper publishes each role's permissions in the token. A name-only
+            # push has no composition to publish.
+            return
+
         try:
             self.sync_protocol_mapper(KC_UTILS_KC_CLIENT_ID)
         except Exception as e:
             logger.error(
                 "Failed to sync role-permissions mapper after role sync: %s", e
             )
+
+
+@dataclass
+class KeycloakRoleName(KeycloakRole):
+    """Push role NAMES to Keycloak, with no Authorization Services write at all.
+
+    `KeycloakRole` creates a policy per role and attaches it to a scope permission per
+    Django permission. A project that authors roles in Django wants none of that in the
+    realm, only the role to exist so it can be assigned.
+    """
+
+    sync_authorization: bool = False
 
 
 class KeycloakRolePermsMapper(ProtocolMapperMixin):
@@ -939,32 +984,117 @@ class KeycloakRolePermsMapper(ProtocolMapperMixin):
 @dataclass
 class KeycloakPredefinedRole(KeycloakRole):
     _predefined_cache: Optional[list[Any]] = field(default=None, init=False, repr=False)
+    # One-off for a project upgrading from a record-less seeder: start a fingerprint
+    # record for a predefined group that already exists and still holds exactly the
+    # provider's composition. See `keycloak_utils.rbac.django.seed_group`.
+    adopt_existing: bool = False
 
     def _get_permissions(self, group) -> list[Permission]:
-        return group.permissions
+        """What the Django group holds, which is what Keycloak is told.
+
+        The provider's own list is only the same thing while the group is attached.
+        Once it is edited the seed leaves the group alone, and pushing the provider's
+        composition would keep granting in Keycloak what was taken off the role here.
+        """
+        django_group = Group.objects.filter(name=group.name).first()
+        if django_group is None:
+            return list(group.permissions)
+        return list(django_group.permissions.select_related("content_type"))
 
     def _load_predefined(self) -> list[Any]:
         if self._predefined_cache is None:
             self._predefined_cache = list(get_predefined_roles_provider()())
         return self._predefined_cache
 
+    def _seeded_role_model(self):
+        """The project's fingerprint model, or None when it has not named one."""
+        path = kc_conf.KC_UTILS_SEEDED_ROLE_MODEL
+        return apps.get_model(path) if path else None
+
     def _seed_django_groups(self) -> None:
         """
-        Ensure Django Group rows + M2M permissions match the predefined provider
-        before the Keycloak push. The predefined provider is the source of truth:
-        permissions are replaced (not merged), so any manual additions on these
-        groups will be overwritten on each run.
+        Bring Django Group rows in line with the predefined provider before the
+        Keycloak push -- without overwriting a group somebody edited.
+
+        This used to `permissions.set()` every predefined group on every run, so a
+        permission a tenant added by hand was silently removed by the next sync. It now
+        asks the seed decision (`keycloak_utils.rbac.seeding`):
+
+        * a group this run creates is filled;
+        * a group it wrote before, and nobody touched, is upgraded to the provider's
+          current composition;
+        * a group that was edited is detached and left alone until it is reset.
+
+        Telling the second from the third needs a record of what was last written,
+        which lives in the project (`KC_UTILS_SEEDED_ROLE_MODEL`). Without that setting
+        an existing group is never modified: there is no way to know it is unedited.
         """
-        for role in self._load_predefined():
-            group, created = Group.objects.get_or_create(name=role.name)
-            perms = list(role.permissions)
-            group.permissions.set(perms)
-            logger.info(
-                "Predefined Django group %s '%s' with %d permissions",
-                "created" if created else "updated",
-                role.name,
-                len(perms),
+        model = self._seeded_role_model()
+        if self.adopt_existing and model is None:
+            # Adoption writes a record and nothing else: without the model it would
+            # finish having done nothing, and the caller would believe otherwise.
+            raise ImproperlyConfigured(
+                "Adopting predefined groups needs KC_UTILS_SEEDED_ROLE_MODEL: there is "
+                "nowhere to record them without it."
             )
+        # An adopted group and one recorded earlier both come back unchanged; the
+        # names recorded before this run tell them apart for the log.
+        recorded = (
+            set(model.objects.values_list("group__name", flat=True))
+            if self.adopt_existing
+            else set()
+        )
+        for role in self._load_predefined():
+            perms = list(role.permissions)
+            outcome = seed_group(
+                name=role.name,
+                wanted=[permission_label(perm) for perm in perms],
+                resolve=lambda perms=perms: perms,
+                model=model,
+                template_key=role.name,
+                adopt_matching=self.adopt_existing,
+            )
+            if outcome is SeedOutcome.SKIPPED_FOREIGN and model is None:
+                logger.warning(
+                    "Predefined Django group '%s' already exists with a different "
+                    "composition and was left untouched. Set "
+                    "KC_UTILS_SEEDED_ROLE_MODEL for drift-aware upgrades.",
+                    role.name,
+                )
+            elif outcome is SeedOutcome.SKIPPED_FOREIGN and self.adopt_existing:
+                # This IS the adoption run, so do not send the reader back to it.
+                logger.warning(
+                    "Predefined Django group '%s' does not hold the provider's "
+                    "composition and was not adopted; it is left untouched and "
+                    "provider updates will not reach it.",
+                    role.name,
+                )
+            elif outcome is SeedOutcome.SKIPPED_FOREIGN:
+                logger.warning(
+                    "Predefined Django group '%s' existed before it was recorded and "
+                    "was left untouched; provider updates will not reach it. Run "
+                    "sync_keycloak -adopt-predefined-groups once to record the groups "
+                    "that still match the provider.",
+                    role.name,
+                )
+            elif (
+                self.adopt_existing
+                and outcome is SeedOutcome.UNCHANGED
+                and role.name not in recorded
+            ):
+                logger.info(
+                    "Predefined Django group '%s': adopted (%d permissions in the "
+                    "provider)",
+                    role.name,
+                    len(perms),
+                )
+            else:
+                logger.info(
+                    "Predefined Django group '%s': %s (%d permissions in the provider)",
+                    role.name,
+                    outcome.value,
+                    len(perms),
+                )
 
     def _create_generator(self) -> Generator[Group, None, None]:
         """
@@ -978,6 +1108,17 @@ class KeycloakPredefinedRole(KeycloakRole):
     def run_routine(self) -> None:
         self._seed_django_groups()
         super().run_routine()
+
+
+@dataclass
+class KeycloakPredefinedRoleAdoption(KeycloakPredefinedRole):
+    """The predefined sync, recording the groups an earlier version created.
+
+    A class and not an argument so the `sync_keycloak` command and a Celery worker
+    can name it, the way they name every other routine.
+    """
+
+    adopt_existing: bool = True
 
 
 @dataclass
@@ -1284,7 +1425,7 @@ class KeycloakBase(KeycloakSync):
             resource_server["decisionStrategy"] = "UNANIMOUS"
             kc_admin.update_client_resource_server(client_id, resource_server)
 
-        if client_type == "private":
+        if client_type == "private" and kc_conf.KC_UTILS_SYNC_AUTHORIZATION:
             update_resource_server()
 
         self.add_client_scope_to_client(client_id, "timezone")
