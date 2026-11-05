@@ -406,6 +406,23 @@ in Keycloak.
 
 ## Release notes
 
+### 0.21.1
+
+* **Security fix — open redirect in the OIDC views.** `oidc/login`, `oidc/logout`
+  and `oidc/callback` now validate the `next` / `error` redirect targets with
+  Django's `url_has_allowed_host_and_scheme`, both where they are stored and again
+  where they are used. A target must be a relative path or an absolute URL on the
+  request's own host (or a host listed in the new setting below); anything else —
+  another host, `//evil.com`, `javascript:`, or `http://` on an `https` site — is
+  refused with `400`, and the session is left untouched.
+* New setting **`KC_UTILS_ALLOWED_REDIRECT_HOSTS`** (default `[]`): extra hosts the
+  `next` / `error` targets may point at, e.g. a frontend served from another domain
+  than the API.
+* **Breaking for cross-host consumers:** a consumer that passes an absolute `next` /
+  `error` URL on a *different* host now gets `400` until that host is added to
+  `KC_UTILS_ALLOWED_REDIRECT_HOSTS`. Relative paths and same-host URLs are
+  unaffected.
+
 ### 0.21.0
 
 * **Dropped Python 3.9.** The minimum supported version is now Python 3.10, and the test
