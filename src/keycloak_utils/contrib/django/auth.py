@@ -12,6 +12,33 @@ from . import conf
 User = get_user_model()
 
 
+def stored_username(claims: dict) -> str:
+    """
+    Return the username to look up the token's user by.
+
+    Keycloak lowercases usernames, so a Django user saved as "Sara.K" signs
+    in as "sara.k". Use the exact spelling if a user has it, else the user
+    that matches ignoring case (lowest pk), else the token's username.
+    Superadmin tokens (staff, services) match exactly only, so they never
+    take a look-alike user someone created.
+    """
+    username: str = claims.get("preferred_username", "")
+    roles: list[str] = claims.get("realm_access", {}).get("roles", [])
+    if (
+        not username
+        or conf.KC_UTILS_USER_SUPERADMIN_ROLE in roles
+        or User.objects.filter(username=username).exists()
+    ):
+        return username
+    stored = (
+        User.objects.filter(username__iexact=username)
+        .order_by("pk")
+        .values_list("username", flat=True)
+        .first()
+    )
+    return stored or username
+
+
 class KCUtilsSSOBackend(SSOAuthBackend):
     def get_token_request_payload(self) -> dict:
         return {
@@ -43,7 +70,7 @@ class AuthenticationBackend(BaseKCSSODjangoAuthBackend):
 
     def get_or_create_user(self, claims: dict) -> User:
         email: str = claims.get("email", "")
-        username: str = claims.get("preferred_username", "")
+        username: str = stored_username(claims)
         first_name: str = claims.get("given_name", "")
         last_name: str = claims.get("family_name", "")
         roles: list[str] = claims.get("realm_access", {}).get("roles", [])
