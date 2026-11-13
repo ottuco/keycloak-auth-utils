@@ -169,3 +169,40 @@ class TestSchemaBased:
             result = wrapped()
 
         assert result == "result-42"
+
+
+class TestSyncCommandSchema:
+    """`sync_keycloak` must be able to run where a tenant's realm and schema differ
+    (Connect: realm `obsidian.ottu.dev`, schema `obsidian`). It used the realm name as
+    the schema, so there it refused with "is not a valid tenant schema"."""
+
+    _module = "keycloak_utils.contrib.django.management.commands.sync_keycloak"
+
+    def _run(self, *argv):
+        from django.core.management import load_command_class
+
+        command = load_command_class("keycloak_utils.contrib.django", "sync_keycloak")
+        options = vars(
+            command.create_parser("manage.py", "sync_keycloak").parse_args(
+                ["--server-url", "http://keycloak.invalid/", *argv]
+            )
+        )
+        seen = []
+
+        def fake_schema_based(func=None, *, schema=None):
+            seen.append(schema)
+            return lambda f: f
+
+        with (
+            mock.patch(f"{self._module}.kc_admin"),
+            mock.patch(f"{self._module}.schema_based", fake_schema_based),
+            mock.patch.object(type(command), "sync_handle"),
+        ):
+            command.handle(**options)
+        return seen
+
+    def test_the_tenant_schema_option_names_the_schema(self):
+        assert self._run("--realm-name", "obsidian.ottu.dev", "--tenant-schema", "obsidian") == ["obsidian"]
+
+    def test_without_it_the_realm_name_is_still_the_schema(self):
+        assert self._run("--realm-name", "acme") == ["acme"]

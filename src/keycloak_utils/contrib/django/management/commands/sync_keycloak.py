@@ -145,6 +145,16 @@ class Command(BaseCommand):
             default=KC_UTILS_KC_REALM,
         )
         parser.add_argument(
+            "--tenant-schema",
+            type=str,
+            help=(
+                "Database schema the sync reads and writes. Defaults to the realm "
+                "name, which only works where the two match; pass it when a tenant's "
+                "realm is named differently from its schema."
+            ),
+            default=None,
+        )
+        parser.add_argument(
             "--admin-id",
             type=str,
             help="Keycloak realm name (overrides environment variable)",
@@ -263,7 +273,7 @@ class Command(BaseCommand):
             )
             return
 
-        @schema_based(schema=self.realm_name)
+        @schema_based(schema=options.get("tenant_schema") or self.realm_name)
         def _run_sync():
             with self.update_event_listeners(self.realm_name):
                 handler_routine = (
