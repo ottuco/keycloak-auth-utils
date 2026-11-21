@@ -1,10 +1,19 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# Publishes the package to PyPI when a GitHub release is published.
+#
+# Two ways to publish, chosen by the repository variable PYPI_TRUSTED_PUBLISHING:
+# - "true": PyPI trusted publishing (OIDC). No token is stored anywhere. The job runs in the
+#   `pypi` environment; PyPI's trusted publisher names this file (python-publish.yml) and that
+#   environment, so keep both names.
+# - anything else (today's default): the old upload with the PYPI_API_TOKEN secret.
+#
+# Switch-on (owner/DevOps, #161497):
+# 1. On pypi.org, project keycloak-utils, Publishing: add a GitHub publisher with owner
+#    ottuco, repository keycloak-auth-utils, workflow python-publish.yml, environment pypi.
+# 2. In the repository settings, create the environment `pypi`, deployments limited to
+#    tags matching v* (releases).
+# 3. Set the repository variable PYPI_TRUSTED_PUBLISHING to true and publish a release.
+# 4. Once a release went out this way: delete the PYPI_API_TOKEN secret, revoke the token on
+#    PyPI and remove the publish-token job below.
 
 name: Upload Python Package
 
@@ -16,15 +25,15 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-
+  build:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v7
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: '3.x'
     - name: Install dependencies
@@ -33,9 +42,47 @@ jobs:
         pip install build
     - name: Build package
       run: python -m build
-    - name: Publish package
-      uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Keep the built package for the publish job
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: dist
+        path: dist/
+        if-no-files-found: error
+
+  publish-trusted:
+    if: vars.PYPI_TRUSTED_PUBLISHING == 'true'
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/keycloak-utils/
+    permissions:
+      id-token: write
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: dist
+        path: dist/
+    - name: Publish package (trusted publishing)
+      uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+      with:
+        verbose: true
+
+  # Old path, kept only until the switch-on above is done (#161497).
+  publish-token:
+    if: vars.PYPI_TRUSTED_PUBLISHING != 'true'
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: dist
+        path: dist/
+    - name: Publish package (API token)
+      uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
       with:
         user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+        password: ${{ secrets.PYPI_API_TOKEN }} # zizmor: ignore[use-trusted-publishing] removed after the switch-on (#161497)
         verbose: true
