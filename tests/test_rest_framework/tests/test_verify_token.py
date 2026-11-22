@@ -144,16 +144,17 @@ class TestBeforeAfter:
     def test_fixture_token_gives_the_same_claims_as_before(self):
         """Normal token: the old call and the new one return identical claims."""
         token = constants.ACCESS_TOKEN
+        pem = f"-----BEGIN PUBLIC KEY-----\n{constants.PUBLIC_KEY}\n-----END PUBLIC KEY-----"
         unverified = jwt.decode(token, options={"verify_signature": False})
         old = jwt.decode(
             token,
-            key=constants.PUBLIC_KEY,
+            key=pem,
             algorithms=["RS256"],
             audience=AUDIENCE,
         )
         new = verify_token(
             access_token=token,
-            public_key=constants.PUBLIC_KEY,
+            public_key=pem,
             algorithms=["RS256"],
             audience=AUDIENCE,
             issuer=unverified["iss"],

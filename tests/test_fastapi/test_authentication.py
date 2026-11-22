@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -112,7 +113,8 @@ class TestAuthenticationAPI:
             kc_algorithms = ["RS256"]
             kc_audience = "account"
 
-        request = mock.Mock()
-        request.headers = {"Authorization": f"Bearer {constants.ACCESS_TOKEN}"}
+        request = SimpleNamespace(
+            headers={"Authorization": f"Bearer {constants.ACCESS_TOKEN}"},
+        )
         claims = PublicNameBackend(request=request).authenticate()
         assert claims["email"] == "john@test.dev"
