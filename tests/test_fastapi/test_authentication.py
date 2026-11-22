@@ -77,11 +77,42 @@ class TestAuthenticationAPI:
             "/",
             headers={
                 "Authorization": f"Dynamic {constants.ACCESS_TOKEN}",
-                "X-Service-ID": "foo-realm",
+                "X-Service-ID": "test-realm",
             },
         )
         assert response.status_code == 200
         assert response.json() == {
             "user": {"email": "john@test.dev", "name": "John Doe"},
         }
-        mock_.assert_called_once_with("https://localhost:8443/auth/realms/foo-realm")
+        mock_.assert_called_once_with("https://localhost:8088/auth/realms/test-realm")
+
+    @mock.patch("requests.get")
+    def test_dynamic_realm_refuses_a_token_of_another_realm(self, mock_):
+        """The fixture token is from test-realm; foo-realm must not accept it."""
+        mock_.return_value.json.return_value = {"public_key": constants.PUBLIC_KEY}
+        mock_.return_value.status_code = 200
+        response = client.get(
+            "/",
+            headers={
+                "Authorization": f"Dynamic {constants.ACCESS_TOKEN}",
+                "X-Service-ID": "foo-realm",
+            },
+        )
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Invalid issuer"}
+
+    @mock.patch(get_fresh_key_from_upstream, return_value=constants.PUBLIC_KEY)
+    def test_backend_issuer_attribute_overrides_the_built_issuer(self, mock_):
+        from keycloak_utils.backend.fastapi import FastAPIKeycloakAuthBackend
+
+        class PublicNameBackend(FastAPIKeycloakAuthBackend):
+            kc_host = "kc.internal.test"
+            kc_realm = "test-realm"
+            kc_issuer = "https://localhost:8088/auth/realms/{realm}"
+            kc_algorithms = ["RS256"]
+            kc_audience = "account"
+
+        request = mock.Mock()
+        request.headers = {"Authorization": f"Bearer {constants.ACCESS_TOKEN}"}
+        claims = PublicNameBackend(request=request).authenticate()
+        assert claims["email"] == "john@test.dev"

@@ -7,8 +7,8 @@ User = get_user_model()
 
 
 class BearerAuthentication(BaseDRFKCAuthentication):
-    kc_host = "localhost:8443"
-    kc_realm = "test"
+    kc_host = "localhost:8088"
+    kc_realm = "test-realm"
     kc_algorithms = ["RS256"]
     kc_audience = "account"
     auth_scheme = "Bearer"
