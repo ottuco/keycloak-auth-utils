@@ -26,6 +26,8 @@ HOST = "kc.example.test"
 REALM = "shop"
 ISSUER = f"https://{HOST}/auth/realms/{REALM}"
 AUDIENCE = "account"
+# The issuer of constants.ACCESS_TOKEN.
+FIXTURE_ISSUER = "https://localhost:8088/auth/realms/test-realm"
 
 get_fresh_key_from_upstream = (
     "keycloak_utils.manager.base.BasePublicKeyManager.get_fresh_key_from_upstream"
@@ -144,8 +146,11 @@ class TestBeforeAfter:
     def test_fixture_token_gives_the_same_claims_as_before(self):
         """Normal token: the old call and the new one return identical claims."""
         token = constants.ACCESS_TOKEN
-        pem = f"-----BEGIN PUBLIC KEY-----\n{constants.PUBLIC_KEY}\n-----END PUBLIC KEY-----"
-        unverified = jwt.decode(token, options={"verify_signature": False})
+        pem = (
+            "-----BEGIN PUBLIC KEY-----\n"
+            f"{constants.PUBLIC_KEY}\n"
+            "-----END PUBLIC KEY-----"
+        )
         old = jwt.decode(
             token,
             key=pem,
@@ -157,7 +162,7 @@ class TestBeforeAfter:
             public_key=pem,
             algorithms=["RS256"],
             audience=AUDIENCE,
-            issuer=unverified["iss"],
+            issuer=FIXTURE_ISSUER,
         )
         assert new == old
 

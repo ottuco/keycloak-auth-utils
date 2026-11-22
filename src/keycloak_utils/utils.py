@@ -61,7 +61,7 @@ def check_issuer(
     if isinstance(received, str):
         received = received[:_LOGGED_ISSUER_MAX_LENGTH]
     log.warning(
-        "Keycloak token refused: issuer %r is not the expected %s. "
+        "Keycloak sign-in refused: issuer %r is not the expected %s. "
         "Set KC_UTILS_KC_ISSUER if the public issuer differs from the key URL.",
         received,
         " or ".join(accepted),
