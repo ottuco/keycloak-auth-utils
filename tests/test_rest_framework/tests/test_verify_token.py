@@ -307,3 +307,30 @@ class TestIssuerSettingType:
         with pytest.raises(TypeError) as e:
             TestDjangoTokenVerifierIssuer().run(make_token(private_key), body)
         assert "KC_UTILS_KC_ISSUER" in str(e.value)
+
+
+class TestIssuerSettingSpaces:
+    """Spaces around an override item are dropped (e.g. env "a, b" split on ",")."""
+
+    clear_key_cache = TestDjangoTokenVerifierIssuer.clear_key_cache
+    raw_key = TestDjangoTokenVerifierIssuer.raw_key
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            f" {ISSUER} ",
+            [f"https://sso.example.test/auth/realms/{REALM}", f" {ISSUER}"],
+        ],
+    )
+    def test_item_with_spaces_still_matches(self, raw_key, monkeypatch, value):
+        private_key, body = raw_key
+        monkeypatch.setattr(conf, "KC_UTILS_KC_ISSUER", value, raising=False)
+        claims = TestDjangoTokenVerifierIssuer().run(make_token(private_key), body)
+        assert claims["iss"] == ISSUER
+
+    def test_other_issuer_still_refused(self, raw_key, monkeypatch):
+        private_key, body = raw_key
+        monkeypatch.setattr(conf, "KC_UTILS_KC_ISSUER", [f" {ISSUER} "], raising=False)
+        token = make_token(private_key, iss=f"https://evil.test/auth/realms/{REALM}")
+        with pytest.raises(JWTDecodeError):
+            TestDjangoTokenVerifierIssuer().run(token, body)
