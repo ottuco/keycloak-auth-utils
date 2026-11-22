@@ -124,8 +124,9 @@ When tokens are issued under another name than the host the service uses (for
 example the service reaches Keycloak by an internal name), set the issuer
 explicitly. It takes one value or a list, and `{realm}` is replaced by the realm.
 The setting **replaces** the built issuer, so list every name tokens are issued
-under, the `kc_host` one included if tokens also come from it. Anything other than
-a string or a list of non-empty strings raises a `TypeError` that names the setting:
+under, the `kc_host` one included if tokens also come from it. Spaces around an
+item are dropped. Anything other than a string or a list of non-empty strings raises
+a `TypeError` that names the setting:
 
 ```python
 # Django settings
@@ -486,7 +487,8 @@ in Keycloak.
   * Tests that sign their own tokens (logout tokens included) must add `exp`.
     Real Keycloak tokens, logout tokens included, always carry it.
   * On the Django SSO login a refused issuer shows as `User not found or User is
-    not active`, not as a 401; the warning log names the issuer.
+    not active`, not as a 401; the warning in the `keycloak_utils.utils` log
+    names the issuer.
 
 ### 0.21.2
 

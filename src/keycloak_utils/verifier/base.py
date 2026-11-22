@@ -21,7 +21,7 @@ def expected_issuers(issuer: IssuerSetting, realm: str, host: str) -> list[str]:
     (``https://<host>/auth/realms/<realm>``), so a working setup keeps working.
     A trailing slash in the host is dropped and the host is also accepted in
     lower case, as Keycloak writes it. An override is one issuer or a list;
-    ``{realm}`` in it becomes the realm.
+    spaces around an item are dropped and ``{realm}`` in it becomes the realm.
     """
     if not issuer:
         host = (host or "").strip().rstrip("/")
@@ -37,7 +37,7 @@ def expected_issuers(issuer: IssuerSetting, realm: str, host: str) -> list[str]:
         if not isinstance(item, str) or not item.strip():
             kind = f"an item of type {type(item).__name__}"
             raise TypeError(_ISSUER_SETTING_ERROR.format(kind=kind))
-    return [item.replace("{realm}", realm) for item in items]
+    return [item.strip().replace("{realm}", realm) for item in items]
 
 
 class BaseTokenVerifier:
