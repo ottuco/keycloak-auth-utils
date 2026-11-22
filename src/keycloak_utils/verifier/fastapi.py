@@ -37,7 +37,7 @@ class AsyncFastAPITokenVerifier:
             issuer=expected_issuers(
                 self.issuer,
                 realm=self.realm,
-                url_realm=self.manager.url_realm,
+                host=self.host,
             ),
         )
 

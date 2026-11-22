@@ -7,17 +7,36 @@ from ..utils import verify_token
 IssuerSetting = typing.Optional[typing.Union[str, typing.Sequence[str]]]
 
 
-def expected_issuers(issuer: IssuerSetting, realm: str, url_realm: str) -> list[str]:
+_ISSUER_SETTING_ERROR = (
+    "KC_UTILS_KC_ISSUER (the issuer argument) must be a string or a list of "
+    "non-empty strings, got {kind}."
+)
+
+
+def expected_issuers(issuer: IssuerSetting, realm: str, host: str) -> list[str]:
     """
     The ``iss`` values a token may carry.
 
     Without an override it is the realm URL the public key is fetched from
     (``https://<host>/auth/realms/<realm>``), so a working setup keeps working.
-    An override is one issuer or a list; ``{realm}`` in it becomes the realm.
+    A trailing slash in the host is dropped and the host is also accepted in
+    lower case, as Keycloak writes it. An override is one issuer or a list;
+    ``{realm}`` in it becomes the realm.
     """
     if not issuer:
-        return [url_realm]
-    items = [issuer] if isinstance(issuer, str) else list(issuer)
+        host = (host or "").strip().rstrip("/")
+        built = [f"https://{name}/auth/realms/{realm}" for name in (host, host.lower())]
+        return list(dict.fromkeys(built))
+    if isinstance(issuer, str):
+        items = [issuer]
+    elif isinstance(issuer, (list, tuple)):
+        items = list(issuer)
+    else:
+        raise TypeError(_ISSUER_SETTING_ERROR.format(kind=type(issuer).__name__))
+    for item in items:
+        if not isinstance(item, str) or not item.strip():
+            kind = f"an item of type {type(item).__name__}"
+            raise TypeError(_ISSUER_SETTING_ERROR.format(kind=kind))
     return [item.replace("{realm}", realm) for item in items]
 
 
@@ -59,6 +78,6 @@ class BaseTokenVerifier:
             issuer=expected_issuers(
                 self.get_issuer_setting(),
                 realm=self.realm,
-                url_realm=manager.url_realm,
+                host=self.host,
             ),
         )
