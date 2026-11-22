@@ -92,6 +92,33 @@ class TestVerifyTokenExp:
             verify(token, public_pem)
 
 
+class TestVerifyTokenExpWithoutIssuer:
+    """exp is required on its own, also for callers that pass no issuer.
+
+    The old ``verify_token`` takes no ``issuer`` argument, so these calls run on
+    it unchanged and fail there with "DID NOT RAISE".
+    """
+
+    def call(self, token, public_pem):
+        return verify_token(
+            access_token=token,
+            public_key=public_pem,
+            algorithms=["RS256"],
+            audience=AUDIENCE,
+        )
+
+    def test_token_without_exp_is_refused(self, keypair):
+        private_key, public_pem = keypair
+        token = make_token(private_key, exp=None)
+        with pytest.raises(JWTDecodeError) as e:
+            self.call(token, public_pem)
+        assert "exp" in str(e.value), "a token without exp must be refused"
+
+    def test_token_with_exp_passes(self, keypair):
+        private_key, public_pem = keypair
+        assert self.call(make_token(private_key), public_pem)["sub"] == "user-1"
+
+
 class TestVerifyTokenIssuer:
     def test_matching_issuer_passes(self, keypair):
         private_key, public_pem = keypair
@@ -131,6 +158,8 @@ class TestVerifyTokenIssuer:
         with caplog.at_level(logging.WARNING, logger="keycloak_utils"):
             with pytest.raises(JWTDecodeError):
                 verify(token, public_pem)
+        logged = "x" * 150 in caplog.text
+        assert logged, "the received issuer is in the log"
         too_long = "x" * 300 in caplog.text
         assert not too_long, "the received issuer is cut short in the log"
 
