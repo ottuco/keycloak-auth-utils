@@ -1,0 +1,16 @@
+# Keeps the commit-SHA pins in .github/workflows current (#161497).
+# Monthly: Dependabot can't open draft PRs, so each update PR runs the test matrix.
+# SHA-pinned actions get no Dependabot security alerts or security-update PRs (GitHub
+# raises those only for semver refs), so a fixed action arrives with the next monthly run
+# (plus the 7-day cooldown). For an urgent action advisory, bump the pin by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
