@@ -1,6 +1,7 @@
 from unittest import mock
 
 import pytest
+from django.core.cache import cache
 from rest_framework.test import APIRequestFactory
 
 from tests import constants
@@ -82,6 +83,25 @@ class TestAuthenticationAPI:
 
     @mock.patch("requests.get")
     def test_auth_with_dynamic_realm(self, mock_):
+        cache.clear()  # earlier tests cached the test-realm key
+        mock_.return_value.json.return_value = {"public_key": constants.PUBLIC_KEY}
+        mock_.return_value.status_code = 200
+        drf_request = APIRequestFactory().get(
+            "/",
+            headers={
+                "Authorization": f"Dynamic {constants.ACCESS_TOKEN}",
+                "X-Service-ID": "test-realm",
+            },
+        )
+        view = UserTestAPI.as_view()
+        response = view(drf_request)
+        assert response.status_code == 200
+        assert response.data["user"] == "john@test.dev"
+        mock_.assert_called_once_with("https://localhost:8088/auth/realms/test-realm")
+
+    @mock.patch("requests.get")
+    def test_dynamic_realm_refuses_a_token_of_another_realm(self, mock_):
+        """The fixture token is from test-realm; foo-realm must not accept it."""
         mock_.return_value.json.return_value = {"public_key": constants.PUBLIC_KEY}
         mock_.return_value.status_code = 200
         drf_request = APIRequestFactory().get(
@@ -93,6 +113,5 @@ class TestAuthenticationAPI:
         )
         view = UserTestAPI.as_view()
         response = view(drf_request)
-        assert response.status_code == 200
-        assert response.data["user"] == "john@test.dev"
-        mock_.assert_called_once_with("https://localhost:8443/auth/realms/foo-realm")
+        assert response.status_code == 401
+        assert response.data["detail"] == "Invalid issuer"

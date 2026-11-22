@@ -108,6 +108,45 @@ curl --location 'https://localhost:8443/path/to/resource/' \
   * `JWT_ACCESS_TOKEN` with the actual access token.
   * `AUTH_SCHEME` with the actual auth scheme. For example, `Bearer` or `Token` or anything you defined with `auth_scheme` class attribute.
 
+## Token checks
+
+Every token must be signed by the realm's key, carry `exp` (and `aud` when an
+audience is set) and come from the expected issuer. The expected issuer (`iss`)
+is the URL the library fetches the realm key from:
+`https://<kc_host>/auth/realms/<realm>` (a trailing slash in `kc_host` is dropped,
+and the host is also accepted in lower case). A token from another realm or another
+host is refused with `Invalid issuer` (401 on an API), and a warning in the
+`keycloak_utils.utils` log names the expected and the received issuer. On the Django
+SSO login (`oidc/callback`) the same refusal sends the user back with the error
+`User not found or User is not active`: check that warning first.
+
+When tokens are issued under another name than the host the service uses (for
+example the service reaches Keycloak by an internal name), set the issuer
+explicitly. It takes one value or a list, and `{realm}` is replaced by the realm.
+The setting **replaces** the built issuer, so list every name tokens are issued
+under, the `kc_host` one included if tokens also come from it. Spaces around an
+item are dropped. Anything other than a string or a list of non-empty strings raises
+a `TypeError` that names the setting:
+
+```python
+# Django settings
+KC_UTILS_KC_ISSUER = [
+    "https://sso.example.com/auth/realms/{realm}",
+    "https://keycloak.internal/auth/realms/{realm}",
+]
+
+# FastAPI (or any backend class)
+class BearerAuthBackend(FastAPIKeycloakAuthBackend):
+    kc_host = "keycloak.internal"
+    kc_realm = "test"
+    kc_issuer = "https://sso.example.com/auth/realms/{realm}"
+    ...
+
+# A verifier used directly
+DjangoTokenVerifier(token, host=..., realm=..., algorithms=..., audience=...,
+                    issuer="https://sso.example.com/auth/realms/test")
+```
+
 ## Usage Advanced
 
 ### 1. Support for multiple authentication classes/backends
@@ -418,6 +457,38 @@ Authorization Services keeps it, with its policies and resources, until it is tu
 in Keycloak.
 
 ## Release notes
+
+### 0.22.0
+
+* **Security fix — tokens must expire and come from the expected issuer** (#161493).
+  `verify_token` now requires the `exp` claim, so a token without one is refused.
+  The token verifiers also check `iss`: by default it must be
+  `https://<kc_host>/auth/realms/<realm>`, the same URL the realm key is fetched
+  from, so a token of another realm (or another host) signed for the same audience
+  is no longer accepted. A refused issuer is logged with the expected and the
+  received value, never the token.
+* New setting **`KC_UTILS_KC_ISSUER`** (default unset), and `kc_issuer` on a backend
+  class or `issuer=` on a verifier: the accepted issuer, one value or a list, with
+  `{realm}` replaced by the realm. Use it when Keycloak issues tokens under another
+  name than the host the service uses.
+* `verify_token` takes a new optional `issuer` argument; without it the issuer is
+  not checked, as before.
+* **Upgrade on purpose:** before you bump, compare the `iss` of a normal token with
+  `https://<KC_UTILS_KC_HOST>/auth/realms/<realm>`. If they differ (Keycloak reached
+  under more than one name), set `KC_UTILS_KC_ISSUER` in the same deploy, or every
+  request gets `401 Invalid issuer`.
+  * `KC_UTILS_KC_ISSUER` is a Django setting. A service that builds its settings
+    from environment variables must read it there itself (for example
+    `KC_UTILS_KC_ISSUER = env.list("KC_UTILS_KC_ISSUER", default=[])`) before an
+    operator can set it on a server.
+  * Back-channel logout tokens checked with `DjangoTokenVerifier` go through the same
+    `iss` check. Keycloak stamps a logout token with the issuer the session signed in
+    under, so that name must be in `KC_UTILS_KC_ISSUER` too, or the logout is refused.
+  * Tests that sign their own tokens (logout tokens included) must add `exp`.
+    Real Keycloak tokens, logout tokens included, always carry it.
+  * On the Django SSO login a refused issuer shows as `User not found or User is
+    not active`, not as a 401; the warning in the `keycloak_utils.utils` log
+    names the issuer.
 
 ### 0.21.2
 

@@ -1,7 +1,7 @@
 import typing
 
 from ..errors import AuthInterruptedError, JWTDecodeError
-from ..verifier.base import BaseTokenVerifier
+from ..verifier.base import BaseTokenVerifier, IssuerSetting
 
 
 def _safe_decode(s: typing.Union[bytes, str]) -> str:
@@ -56,6 +56,9 @@ class BaseKCAuthBackend:
     kc_realm: str
     kc_algorithms: list[str]
     kc_audience: str
+    # Accepted token issuer(s); None means the realm URL the key comes from
+    # (Django: KC_UTILS_KC_ISSUER). "{realm}" is replaced by the realm.
+    kc_issuer: IssuerSetting = None
 
     verifier: typing.Type[BaseTokenVerifier]
     AuthError = AuthInterruptedError
@@ -68,6 +71,7 @@ class BaseKCAuthBackend:
         algorithms: typing.Optional[list[str]] = None,
         audience: typing.Optional[str] = None,
         *args,
+        issuer: IssuerSetting = None,
         **kwargs,
     ):
         self.request = request
@@ -75,6 +79,7 @@ class BaseKCAuthBackend:
         self.kc_realm = realm or self.get_kc_realm()
         self.kc_algorithms = algorithms or self.get_kc_algorithms()
         self.kc_audience = audience or self.get_kc_audience()
+        self.kc_issuer = issuer or self.get_kc_issuer()
 
     def get_kc_audience(self) -> str:
         try:
@@ -120,6 +125,9 @@ class BaseKCAuthBackend:
             )
             raise NotImplementedError(msg)
 
+    def get_kc_issuer(self) -> IssuerSetting:
+        return self.kc_issuer
+
     def post_authenticate_hooks(self, claims: dict) -> dict:
         """
         This method is called after obtaining the claims from the token.
@@ -134,6 +142,7 @@ class BaseKCAuthBackend:
                 realm=self.kc_realm,
                 algorithms=self.kc_algorithms,
                 audience=self.kc_audience,
+                issuer=self.kc_issuer,
             )
             claims = verifier.get_claims()
             return self.post_authenticate_hooks(claims)

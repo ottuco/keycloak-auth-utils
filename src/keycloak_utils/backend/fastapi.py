@@ -22,6 +22,7 @@ class AsyncFastAPIKeycloakAuthBackend(APIAuthMixin, BaseKCAuthBackend):
                 realm=self.kc_realm,
                 algorithms=self.kc_algorithms,
                 audience=self.kc_audience,
+                issuer=self.kc_issuer,
             )
             claims = await verifier.get_claims()
             return await sync_to_async(self.post_authenticate_hooks)(claims)
