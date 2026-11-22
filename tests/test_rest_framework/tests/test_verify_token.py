@@ -271,3 +271,39 @@ class TestDjangoTokenVerifierIssuer:
         token = make_token(private_key, iss="https://sso.example.test/auth/realms/x")
         with pytest.raises(JWTDecodeError):
             self.run(token, body)
+
+
+class TestBuiltIssuerHost:
+    """The built issuer ignores a trailing slash and upper case in the KC host."""
+
+    run = TestDjangoTokenVerifierIssuer.run
+    clear_key_cache = TestDjangoTokenVerifierIssuer.clear_key_cache
+    raw_key = TestDjangoTokenVerifierIssuer.raw_key
+
+    @pytest.mark.parametrize("host", [f"{HOST}/", HOST.upper(), f"{HOST.upper()}//"])
+    def test_host_spelling_still_matches_the_issuer(self, raw_key, no_override, host):
+        private_key, body = raw_key
+        claims = self.run(make_token(private_key), body, host=host)
+        assert claims["iss"] == ISSUER
+
+    def test_other_host_is_still_refused(self, raw_key, no_override):
+        private_key, body = raw_key
+        token = make_token(private_key, iss=f"https://evil.test/auth/realms/{REALM}")
+        with pytest.raises(JWTDecodeError):
+            self.run(token, body, host=f"{HOST}/")
+
+
+class TestIssuerSettingType:
+    """A wrong KC_UTILS_KC_ISSUER value is a clear config error, never accepted."""
+
+    @pytest.mark.parametrize("value", [[None], [""], ["  "], [1], 1, {"a": 1}])
+    def test_wrong_value_names_the_setting(self, keypair, monkeypatch, value):
+        private_key, public_pem = keypair
+        body = "".join(public_pem.strip().splitlines()[1:-1])
+        monkeypatch.setattr(conf, "KC_UTILS_KC_ISSUER", value, raising=False)
+        from django.core.cache import cache
+
+        cache.clear()
+        with pytest.raises(TypeError) as e:
+            TestDjangoTokenVerifierIssuer().run(make_token(private_key), body)
+        assert "KC_UTILS_KC_ISSUER" in str(e.value)
