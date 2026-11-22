@@ -10,10 +10,14 @@
 # 1. On pypi.org, project keycloak-utils, Publishing: add a GitHub publisher with owner
 #    ottuco, repository keycloak-auth-utils, workflow python-publish.yml, environment pypi.
 # 2. In the repository settings, create the environment `pypi`, deployments limited to
-#    tags matching v* (releases).
-# 3. Set the repository variable PYPI_TRUSTED_PUBLISHING to true and publish a release.
-# 4. Once a release went out this way: delete the PYPI_API_TOKEN secret, revoke the token on
-#    PyPI and remove the publish-token job below.
+#    tags matching v* (releases), with required reviewers (the release owners).
+# 3. Add a tag ruleset for v* so only the release owners can create, move or delete those
+#    tags. Without it any writer can tag any commit and publish it: a check inside this
+#    file would not stop that, because a release runs the workflow of the tagged commit.
+# 4. Set the repository variable PYPI_TRUSTED_PUBLISHING to true and publish a release.
+# 5. Once a release went out this way: delete the PYPI_API_TOKEN secret, revoke the token on
+#    PyPI and remove the publish-token job below. Until then the token is a repository
+#    secret that any workflow run on a pushed branch can read.
 
 name: Upload Python Package
 
