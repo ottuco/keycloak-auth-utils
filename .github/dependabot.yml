@@ -1,10 +1,12 @@
 # Keeps the commit-SHA pins in .github/workflows current (#161497).
+# Monthly: Dependabot can't open draft PRs, so each update PR runs the test matrix.
+# Security fixes for an action still come at once through Dependabot security updates.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 7
     groups:
