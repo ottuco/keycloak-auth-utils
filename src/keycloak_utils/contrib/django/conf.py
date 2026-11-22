@@ -10,6 +10,14 @@ KC_UTILS_KC_ALGORITHMS: list[str] = getattr(
     ["RS256"],
 )
 KC_UTILS_KC_AUDIENCE: str = getattr(settings, "KC_UTILS_KC_AUDIENCE", "")
+# Accepted token issuer ("iss"), one string or a list; "{realm}" is replaced by the
+# realm. Empty: https://<KC host>/auth/realms/<realm>, the URL the key comes from.
+# Set it when tokens are issued under another name than the host the service uses.
+KC_UTILS_KC_ISSUER: str | list[str] | None = getattr(
+    settings,
+    "KC_UTILS_KC_ISSUER",
+    None,
+)
 KC_UTILS_AUTH_SCHEME: str = getattr(settings, "KC_UTILS_AUTH_SCHEME", "Bearer")
 
 KC_UTILS_OIDC_AUTHORIZATION_URL: str = getattr(
